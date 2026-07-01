@@ -469,12 +469,13 @@ async function submitPrompt() {
   const value = prompt.value.trim();
   if (!value || isGenerating.value) return;
 
+  const mode = promptMode.value;
   isGenerating.value = true;
 
   await new Promise((resolve) => window.setTimeout(resolve, 850));
 
-  if (promptMode.value.type === 'edit') {
-    const artifact = artifacts.value.find((item) => item.id === promptMode.value.artifactId);
+  if (mode.type === 'edit') {
+    const artifact = artifacts.value.find((item) => item.id === mode.artifactId);
 
     if (artifact) {
       const generated = fakeGenerateArtifact(value, artifact);
@@ -700,13 +701,13 @@ onUnmounted(() => {
               <span class="component-preview__label">{{ artifact.content.componentName }}</span>
               <strong>{{ artifact.content.previewTitle }}</strong>
               <div class="component-preview__actions">
-                <span v-for="action in artifact.content.actions" :key="action">{{ action }}</span>
+                <span v-for="action in artifact.content.actions ?? []" :key="action">{{ action }}</span>
               </div>
             </div>
           </template>
 
           <template v-else-if="artifact.kind === 'image'">
-            <div class="image-preview" role="img" :aria-label="artifact.content.alt">
+            <div class="image-preview" role="img" :aria-label="artifact.content.alt ?? artifact.title">
               <span />
               <p>{{ artifact.content.description }}</p>
             </div>
@@ -716,7 +717,7 @@ onUnmounted(() => {
             <div class="video-preview">
               <span class="video-preview__play">▶</span>
               <ol>
-                <li v-for="beat in artifact.content.storyboard" :key="beat">{{ beat }}</li>
+                <li v-for="beat in artifact.content.storyboard ?? []" :key="beat">{{ beat }}</li>
               </ol>
             </div>
           </template>

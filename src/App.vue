@@ -443,9 +443,6 @@ onUnmounted(() => {
           <button class="artifact-action-root" type="button" aria-label="Show artifact actions">
             <span />
           </button>
-          <span class="artifact-action-line artifact-action-line--inspect" />
-          <span class="artifact-action-line artifact-action-line--edit" />
-          <span class="artifact-action-line artifact-action-line--fork" />
           <button class="artifact-action artifact-action--inspect" type="button" data-label="inspect" aria-label="Inspect artifact">
             i
           </button>

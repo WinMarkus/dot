@@ -11,6 +11,10 @@ A minimal generative creation canvas prototype.
 - submit a prompt to create a mock artifact near the dot
 - generated artifacts materialize onto the canvas
 - generated artifacts are draggable
+- selected artifacts show a small action dot
+- hover or focus the action dot to bloom action sub-dots
+- the old visible inspect button has been removed
+- canvas controls live behind the bottom-left `?` help dot
 - drag the background to pan the camera
 - mouse wheel zooms the camera
 - press `F` to fit all current objects

@@ -23,6 +23,7 @@ A minimal generative creation canvas prototype.
 - fork duplicates the artifact nearby
 - delete removes the artifact and leaves a spatial undo bubble where the artifact lived
 - if undo expires, a small red deleted marker remains on the canvas
+- tapping a deleted marker revitalises the artifact at its original position
 - deleted markers can be cleared with the clear deleted dots control
 - canvas controls live behind the bottom-left help dot
 - drag the background to pan the camera

@@ -34,11 +34,18 @@ input {
   height: 100vh;
   overflow: hidden;
   background:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     radial-gradient(circle at 50% 55%, rgba(238, 255, 209, 0.08), transparent 22rem),
     radial-gradient(circle at 18% 18%, rgba(116, 255, 167, 0.1), transparent 18rem),
     linear-gradient(145deg, #151711 0%, #0e100e 50%, #090b0a 100%);
-  cursor: default;
+  cursor: grab;
   user-select: none;
+  touch-action: none;
+}
+
+.workspace--panning {
+  cursor: grabbing;
 }
 
 .workspace::before {
@@ -46,11 +53,14 @@ input {
   inset: 0;
   pointer-events: none;
   content: "";
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(circle at center, black, transparent 72%);
+  background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.42) 76%);
+}
+
+.world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 
 .ambient {
@@ -147,7 +157,7 @@ input {
 .command-bar {
   position: absolute;
   left: 50%;
-  bottom: 28px;
+  bottom: max(28px, env(safe-area-inset-bottom));
   z-index: 20;
   display: grid;
   grid-template-columns: auto minmax(260px, 680px) auto;
@@ -229,10 +239,20 @@ input {
   opacity: 0.45;
 }
 
+.canvas-hint {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  z-index: 2;
+  color: rgba(243, 239, 230, 0.34);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
 .artifact-card {
   position: absolute;
   z-index: 5;
-  width: 320px;
   min-height: 190px;
   padding: 22px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -242,9 +262,20 @@ input {
     rgba(26, 27, 22, 0.8);
   box-shadow: 0 26px 80px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(20px);
-  animation: materialize 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: materialize 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
   cursor: grab;
   touch-action: none;
+}
+
+.artifact-card::before {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 188, 117, 0.28), transparent 34%, rgba(142, 255, 135, 0.16));
+  transition: opacity 180ms ease;
 }
 
 .artifact-card:active,
@@ -257,12 +288,31 @@ input {
   box-shadow: 0 34px 90px rgba(0, 0, 0, 0.46);
 }
 
+.artifact-card--selected::before {
+  opacity: 1;
+}
+
 .artifact-card:focus-visible {
   outline: 2px solid rgba(255, 188, 117, 0.75);
   outline-offset: 4px;
 }
 
+.artifact-card__spark {
+  position: absolute;
+  right: 22px;
+  top: -18px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #fff3c7;
+  box-shadow:
+    0 0 12px rgba(255, 243, 199, 0.95),
+    0 0 26px rgba(255, 188, 117, 0.72);
+  animation: spark-orbit 2.8s ease-in-out infinite;
+}
+
 .artifact-card__eyebrow {
+  position: relative;
   margin-bottom: 12px;
   color: rgba(255, 188, 117, 0.8);
   font-size: 0.72rem;
@@ -272,6 +322,7 @@ input {
 }
 
 .artifact-card h2 {
+  position: relative;
   margin: 0 0 12px;
   color: #fffaf0;
   font-size: 1.28rem;
@@ -279,6 +330,7 @@ input {
 }
 
 .artifact-card p {
+  position: relative;
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
@@ -290,6 +342,7 @@ input {
 }
 
 .artifact-card__footer {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -328,11 +381,26 @@ input {
   }
 }
 
+@keyframes spark-orbit {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-14px, 6px) scale(1.45);
+  }
+}
+
 @keyframes materialize {
   from {
     opacity: 0;
-    transform: translate(-8px, 10px) scale(0.9);
-    filter: blur(8px);
+    transform: translate(-18px, 18px) scale(0.72);
+    filter: blur(12px);
+  }
+  68% {
+    opacity: 1;
+    transform: translate(4px, -3px) scale(1.025);
+    filter: blur(0);
   }
   to {
     opacity: 1;
@@ -347,11 +415,8 @@ input {
     border-radius: 28px;
   }
 
-  .command-bar__status {
+  .command-bar__status,
+  .canvas-hint {
     display: none;
-  }
-
-  .artifact-card {
-    width: min(320px, calc(100vw - 40px));
   }
 }

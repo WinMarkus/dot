@@ -39,6 +39,22 @@ type GeneratedArtifact = {
   content: ArtifactContent;
 };
 
+type DeletedToast = {
+  id: string;
+  artifact: Artifact;
+  x: number;
+  y: number;
+  timeoutId: number;
+};
+
+type DeletedMarker = {
+  id: string;
+  title: string;
+  x: number;
+  y: number;
+  createdAt: string;
+};
+
 type DragState = {
   pointerId: number;
   startPointerX: number;
@@ -62,6 +78,7 @@ const ARTIFACT_WIDTH = 320;
 const ARTIFACT_HEIGHT = 230;
 const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 2.4;
+const DELETE_UNDO_MS = 5000;
 
 const dot = ref<Point>({ x: 0, y: 0 });
 const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
@@ -70,6 +87,8 @@ const isGenerating = ref(false);
 const prompt = ref('');
 const promptMode = ref<PromptMode>({ type: 'create' });
 const artifacts = ref<Artifact[]>([]);
+const deletedToasts = ref<DeletedToast[]>([]);
+const deletedMarkers = ref<DeletedMarker[]>([]);
 const promptInput = ref<HTMLInputElement | null>(null);
 const selectedArtifactId = ref<string | null>(null);
 const activeActionArtifactId = ref<string | null>(null);
@@ -194,6 +213,17 @@ function makeArtifactTitle(value: string) {
   return clean.length > 42 ? `${clean.slice(0, 39)}...` : clean;
 }
 
+function formatTimestamp() {
+  return new Intl.DateTimeFormat('en', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date());
+}
+
+function cloneArtifact(artifact: Artifact): Artifact {
+  return JSON.parse(JSON.stringify(artifact)) as Artifact;
+}
+
 function detectArtifactKind(value: string, fallback: ArtifactKind = 'unknown'): ArtifactKind {
   const text = value.toLowerCase();
 
@@ -287,16 +317,9 @@ function createArtifactFromPrompt(value: string, position: Point): Artifact {
     y: position.y,
     width: ARTIFACT_WIDTH,
     height: ARTIFACT_HEIGHT,
-    createdAt: new Intl.DateTimeFormat('en', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date()),
+    createdAt: formatTimestamp(),
     content: generated.content,
   };
-}
-
-function cloneArtifactContent(content: ArtifactContent): ArtifactContent {
-  return JSON.parse(JSON.stringify(content)) as ArtifactContent;
 }
 
 function activatePrompt() {
@@ -406,7 +429,7 @@ function handleArtifactPointerUp(event: PointerEvent) {
 }
 
 function handleWorkspacePointerDown(event: PointerEvent) {
-  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel')) return;
+  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel, .deleted-toast, .deleted-marker, .marker-control')) return;
 
   selectedArtifactId.value = null;
   activeActionArtifactId.value = null;
@@ -514,21 +537,65 @@ function startPromptArtifact(artifact: Artifact) {
 
 function forkArtifact(artifact: Artifact) {
   const fork: Artifact = {
-    ...artifact,
+    ...cloneArtifact(artifact),
     id: crypto.randomUUID(),
     title: `Fork of ${artifact.title}`,
     x: artifact.x + 48,
     y: artifact.y + 48,
-    createdAt: new Intl.DateTimeFormat('en', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(new Date()),
-    content: cloneArtifactContent(artifact.content),
+    createdAt: formatTimestamp(),
   };
 
   artifacts.value.push(fork);
   selectedArtifactId.value = fork.id;
   activeActionArtifactId.value = null;
+}
+
+function materializeDeletedMarker(toast: DeletedToast) {
+  deletedMarkers.value.push({
+    id: crypto.randomUUID(),
+    title: toast.artifact.title,
+    x: toast.x,
+    y: toast.y,
+    createdAt: formatTimestamp(),
+  });
+  deletedToasts.value = deletedToasts.value.filter((item) => item.id !== toast.id);
+}
+
+function deleteArtifact(artifact: Artifact) {
+  const removed = cloneArtifact(artifact);
+  const toastId = crypto.randomUUID();
+  const x = artifact.x + artifact.width / 2;
+  const y = artifact.y + artifact.height / 2;
+
+  artifacts.value = artifacts.value.filter((item) => item.id !== artifact.id);
+  selectedArtifactId.value = null;
+  activeActionArtifactId.value = null;
+
+  if (inspectedArtifactId.value === artifact.id) {
+    inspectedArtifactId.value = null;
+  }
+
+  const toast: DeletedToast = {
+    id: toastId,
+    artifact: removed,
+    x,
+    y,
+    timeoutId: 0,
+  };
+
+  toast.timeoutId = window.setTimeout(() => materializeDeletedMarker(toast), DELETE_UNDO_MS);
+  deletedToasts.value.push(toast);
+}
+
+function undoDelete(toast: DeletedToast) {
+  window.clearTimeout(toast.timeoutId);
+  artifacts.value.push(toast.artifact);
+  deletedToasts.value = deletedToasts.value.filter((item) => item.id !== toast.id);
+  selectedArtifactId.value = toast.artifact.id;
+}
+
+function clearDeletedMarkers() {
+  deletedMarkers.value = [];
 }
 
 function toggleArtifactActions(artifact: Artifact) {
@@ -549,6 +616,8 @@ function fitAll() {
       width: artifact.width,
       height: artifact.height,
     })),
+    ...deletedToasts.value.map((toast) => ({ x: toast.x - 80, y: toast.y - 20, width: 160, height: 40 })),
+    ...deletedMarkers.value.map((marker) => ({ x: marker.x - 10, y: marker.y - 10, width: 20, height: 20 })),
   ];
 
   const minX = Math.min(...items.map((item) => item.x));
@@ -603,6 +672,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  deletedToasts.value.forEach((toast) => window.clearTimeout(toast.timeoutId));
 });
 </script>
 
@@ -621,6 +691,28 @@ onUnmounted(() => {
     <div class="ambient ambient--two" />
 
     <div class="world" :style="worldTransform">
+      <button
+        v-for="marker in deletedMarkers"
+        :key="marker.id"
+        class="deleted-marker"
+        type="button"
+        :title="`Deleted: ${marker.title}`"
+        :aria-label="`Deleted marker for ${marker.title}`"
+        :style="{ left: `${marker.x}px`, top: `${marker.y}px` }"
+        @pointerdown.stop
+      />
+
+      <div
+        v-for="toast in deletedToasts"
+        :key="toast.id"
+        class="deleted-toast"
+        :style="{ left: `${toast.x}px`, top: `${toast.y}px` }"
+        @pointerdown.stop
+      >
+        <span>deleted</span>
+        <button type="button" @click="undoDelete(toast)">undo</button>
+      </div>
+
       <section
         v-for="artifact in artifacts"
         :key="artifact.id"
@@ -686,6 +778,15 @@ onUnmounted(() => {
           >
             ⟡
           </button>
+          <button
+            class="artifact-action artifact-action--delete"
+            type="button"
+            data-label="delete"
+            aria-label="Delete artifact"
+            @click="deleteArtifact(artifact)"
+          >
+            ×
+          </button>
         </div>
 
         <div class="artifact-card__eyebrow">{{ artifact.kind }} · {{ artifact.createdAt }}</div>
@@ -742,6 +843,16 @@ onUnmounted(() => {
       </button>
     </div>
 
+    <button
+      v-if="deletedMarkers.length"
+      class="marker-control"
+      type="button"
+      @pointerdown.stop
+      @click="clearDeletedMarkers"
+    >
+      clear deleted dots
+    </button>
+
     <div class="canvas-help">
       <button class="canvas-help__trigger" type="button" aria-label="Show canvas controls">?</button>
       <div class="canvas-help__panel" role="tooltip">
@@ -771,6 +882,9 @@ onUnmounted(() => {
         </div>
       </dl>
       <pre>{{ inspectedArtifactRaw }}</pre>
+      <button class="inspector-panel__delete" type="button" @click="deleteArtifact(inspectedArtifact)">
+        delete artifact
+      </button>
     </aside>
 
     <form

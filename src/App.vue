@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
+type Point = {
+  x: number;
+  y: number;
+};
+
 type Artifact = {
   id: string;
   title: string;
   prompt: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
   createdAt: string;
 };
 
@@ -19,53 +26,119 @@ type DragState = {
   moved: boolean;
 };
 
-const dot = ref({ x: 0, y: 0 });
+type CameraState = {
+  x: number;
+  y: number;
+  zoom: number;
+};
+
+const ARTIFACT_WIDTH = 320;
+const ARTIFACT_HEIGHT = 210;
+const MIN_ZOOM = 0.35;
+const MAX_ZOOM = 2.4;
+
+const dot = ref<Point>({ x: 0, y: 0 });
+const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
 const isDotActive = ref(false);
 const isGenerating = ref(false);
 const prompt = ref('');
 const artifacts = ref<Artifact[]>([]);
 const promptInput = ref<HTMLInputElement | null>(null);
+const selectedArtifactId = ref<string | null>(null);
 
 const dotDragState = ref<DragState | null>(null);
 const artifactDragState = ref<(DragState & { artifactId: string }) | null>(null);
+const panState = ref<DragState | null>(null);
 
 const dotClass = computed(() => ({
   'seed-dot--active': isDotActive.value,
   'seed-dot--generating': isGenerating.value,
 }));
 
-function centerDot() {
-  dot.value = {
-    x: window.innerWidth / 2,
-    y: window.innerHeight / 2,
-  };
-}
+const worldTransform = computed(() => ({
+  transform: `translate3d(${camera.value.x}px, ${camera.value.y}px, 0) scale(${camera.value.zoom})`,
+}));
+
+const gridStyle = computed(() => ({
+  backgroundPosition: `${camera.value.x}px ${camera.value.y}px`,
+  backgroundSize: `${44 * camera.value.zoom}px ${44 * camera.value.zoom}px`,
+}));
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function getArtifactBounds() {
-  const padding = 20;
-  const width = Math.min(320, window.innerWidth - padding * 2);
-  const height = 210;
-
+function screenToWorld(point: Point): Point {
   return {
-    padding,
-    width,
-    height,
-    maxX: Math.max(padding, window.innerWidth - width - padding),
-    maxY: Math.max(padding, window.innerHeight - height - padding),
+    x: (point.x - camera.value.x) / camera.value.zoom,
+    y: (point.y - camera.value.y) / camera.value.zoom,
   };
 }
 
-function getSafeArtifactPosition(x: number, y: number) {
-  const bounds = getArtifactBounds();
-
+function worldToScreen(point: Point): Point {
   return {
-    x: clamp(x, bounds.padding, bounds.maxX),
-    y: clamp(y, bounds.padding, bounds.maxY),
+    x: point.x * camera.value.zoom + camera.value.x,
+    y: point.y * camera.value.zoom + camera.value.y,
   };
+}
+
+function centerCameraOn(point: Point, zoom = camera.value.zoom) {
+  camera.value = {
+    x: window.innerWidth / 2 - point.x * zoom,
+    y: window.innerHeight / 2 - point.y * zoom,
+    zoom,
+  };
+}
+
+function resetCamera() {
+  centerCameraOn(dot.value, 1);
+}
+
+function zoomAt(screenPoint: Point, nextZoom: number) {
+  const zoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
+  const worldPoint = screenToWorld(screenPoint);
+
+  camera.value = {
+    x: screenPoint.x - worldPoint.x * zoom,
+    y: screenPoint.y - worldPoint.y * zoom,
+    zoom,
+  };
+}
+
+function getViewportSafeWorldPoint(screenPoint: Point): Point {
+  return screenToWorld({
+    x: clamp(screenPoint.x, 28, window.innerWidth - 28),
+    y: clamp(screenPoint.y, 28, window.innerHeight - 130),
+  });
+}
+
+function chooseArtifactPosition(seed: Point) {
+  const margin = 28;
+  const reservedBottom = 132;
+  const gap = 42;
+  const candidates: Point[] = [
+    { x: seed.x + gap, y: seed.y - ARTIFACT_HEIGHT * 0.25 },
+    { x: seed.x - ARTIFACT_WIDTH - gap, y: seed.y - ARTIFACT_HEIGHT * 0.25 },
+    { x: seed.x - ARTIFACT_WIDTH * 0.5, y: seed.y + gap },
+    { x: seed.x - ARTIFACT_WIDTH * 0.5, y: seed.y - ARTIFACT_HEIGHT - gap },
+  ];
+
+  const fittingCandidate = candidates.find((candidate) => {
+    const screen = worldToScreen(candidate);
+    const width = ARTIFACT_WIDTH * camera.value.zoom;
+    const height = ARTIFACT_HEIGHT * camera.value.zoom;
+
+    return (
+      screen.x >= margin &&
+      screen.y >= margin &&
+      screen.x + width <= window.innerWidth - margin &&
+      screen.y + height <= window.innerHeight - reservedBottom
+    );
+  });
+
+  if (fittingCandidate) return fittingCandidate;
+
+  return getViewportSafeWorldPoint({ x: margin, y: margin + 24 });
 }
 
 function activatePrompt() {
@@ -77,6 +150,8 @@ function activatePrompt() {
 
 function handleDotPointerDown(event: PointerEvent) {
   if (isGenerating.value) return;
+
+  event.stopPropagation();
 
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
@@ -95,10 +170,10 @@ function handleDotPointerMove(event: PointerEvent) {
   const state = dotDragState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
-  const dx = event.clientX - state.startPointerX;
-  const dy = event.clientY - state.startPointerY;
+  const dx = (event.clientX - state.startPointerX) / camera.value.zoom;
+  const dy = (event.clientY - state.startPointerY) / camera.value.zoom;
 
-  if (Math.abs(dx) + Math.abs(dy) > 4) {
+  if (Math.abs(event.clientX - state.startPointerX) + Math.abs(event.clientY - state.startPointerY) > 4) {
     state.moved = true;
   }
 
@@ -122,6 +197,9 @@ function handleDotPointerUp(event: PointerEvent) {
 }
 
 function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
+  event.stopPropagation();
+  selectedArtifactId.value = artifact.id;
+
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
 
@@ -140,19 +218,18 @@ function handleArtifactPointerMove(event: PointerEvent) {
   const state = artifactDragState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
-  const dx = event.clientX - state.startPointerX;
-  const dy = event.clientY - state.startPointerY;
+  const dx = (event.clientX - state.startPointerX) / camera.value.zoom;
+  const dy = (event.clientY - state.startPointerY) / camera.value.zoom;
 
-  if (Math.abs(dx) + Math.abs(dy) > 4) {
+  if (Math.abs(event.clientX - state.startPointerX) + Math.abs(event.clientY - state.startPointerY) > 4) {
     state.moved = true;
   }
 
   const artifact = artifacts.value.find((item) => item.id === state.artifactId);
   if (!artifact) return;
 
-  const nextPosition = getSafeArtifactPosition(state.startX + dx, state.startY + dy);
-  artifact.x = nextPosition.x;
-  artifact.y = nextPosition.y;
+  artifact.x = state.startX + dx;
+  artifact.y = state.startY + dy;
 }
 
 function handleArtifactPointerUp(event: PointerEvent) {
@@ -162,6 +239,58 @@ function handleArtifactPointerUp(event: PointerEvent) {
   const target = event.currentTarget as HTMLElement;
   target.releasePointerCapture(event.pointerId);
   artifactDragState.value = null;
+}
+
+function handleWorkspacePointerDown(event: PointerEvent) {
+  if ((event.target as HTMLElement).closest('.command-bar')) return;
+
+  selectedArtifactId.value = null;
+
+  const target = event.currentTarget as HTMLElement;
+  target.setPointerCapture(event.pointerId);
+
+  panState.value = {
+    pointerId: event.pointerId,
+    startPointerX: event.clientX,
+    startPointerY: event.clientY,
+    startX: camera.value.x,
+    startY: camera.value.y,
+    moved: false,
+  };
+}
+
+function handleWorkspacePointerMove(event: PointerEvent) {
+  const state = panState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  const dx = event.clientX - state.startPointerX;
+  const dy = event.clientY - state.startPointerY;
+
+  if (Math.abs(dx) + Math.abs(dy) > 4) {
+    state.moved = true;
+  }
+
+  camera.value = {
+    ...camera.value,
+    x: state.startX + dx,
+    y: state.startY + dy,
+  };
+}
+
+function handleWorkspacePointerUp(event: PointerEvent) {
+  const state = panState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  const target = event.currentTarget as HTMLElement;
+  target.releasePointerCapture(event.pointerId);
+  panState.value = null;
+}
+
+function handleWheel(event: WheelEvent) {
+  event.preventDefault();
+
+  const zoomFactor = event.deltaY > 0 ? 0.92 : 1.08;
+  zoomAt({ x: event.clientX, y: event.clientY }, camera.value.zoom * zoomFactor);
 }
 
 function closePrompt() {
@@ -186,7 +315,7 @@ async function submitPrompt() {
 
   await new Promise((resolve) => window.setTimeout(resolve, 850));
 
-  const position = getSafeArtifactPosition(dot.value.x + 34, dot.value.y - 28);
+  const position = chooseArtifactPosition(dot.value);
 
   artifacts.value.push({
     id: crypto.randomUUID(),
@@ -194,6 +323,8 @@ async function submitPrompt() {
     prompt: value,
     x: position.x,
     y: position.y,
+    width: ARTIFACT_WIDTH,
+    height: ARTIFACT_HEIGHT,
     createdAt: new Intl.DateTimeFormat('en', {
       hour: '2-digit',
       minute: '2-digit',
@@ -205,14 +336,58 @@ async function submitPrompt() {
   isGenerating.value = false;
 }
 
+function fitAll() {
+  const items = [
+    { x: dot.value.x - 16, y: dot.value.y - 16, width: 32, height: 32 },
+    ...artifacts.value.map((artifact) => ({
+      x: artifact.x,
+      y: artifact.y,
+      width: artifact.width,
+      height: artifact.height,
+    })),
+  ];
+
+  const minX = Math.min(...items.map((item) => item.x));
+  const minY = Math.min(...items.map((item) => item.y));
+  const maxX = Math.max(...items.map((item) => item.x + item.width));
+  const maxY = Math.max(...items.map((item) => item.y + item.height));
+
+  const boundsWidth = Math.max(maxX - minX, 1);
+  const boundsHeight = Math.max(maxY - minY, 1);
+  const zoom = clamp(
+    Math.min((window.innerWidth - 120) / boundsWidth, (window.innerHeight - 220) / boundsHeight),
+    MIN_ZOOM,
+    1.25,
+  );
+
+  camera.value = {
+    x: window.innerWidth / 2 - (minX + boundsWidth / 2) * zoom,
+    y: window.innerHeight / 2 - (minY + boundsHeight / 2) * zoom,
+    zoom,
+  };
+}
+
 function handleKeydown(event: KeyboardEvent) {
+  const target = event.target as HTMLElement;
+  const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+
   if (event.key === 'Escape') {
     closePrompt();
+  }
+
+  if (isTyping) return;
+
+  if (event.key.toLowerCase() === 'f') {
+    fitAll();
+  }
+
+  if (event.key === '0') {
+    resetCamera();
   }
 }
 
 onMounted(() => {
-  centerDot();
+  resetCamera();
   window.addEventListener('keydown', handleKeydown);
 });
 
@@ -222,43 +397,67 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="workspace" aria-label="Dot creation canvas">
+  <main
+    class="workspace"
+    :class="{ 'workspace--panning': Boolean(panState) }"
+    :style="gridStyle"
+    aria-label="Dot creation canvas"
+    @pointerdown="handleWorkspacePointerDown"
+    @pointermove="handleWorkspacePointerMove"
+    @pointerup="handleWorkspacePointerUp"
+    @wheel="handleWheel"
+  >
     <div class="ambient ambient--one" />
     <div class="ambient ambient--two" />
 
-    <section
-      v-for="artifact in artifacts"
-      :key="artifact.id"
-      class="artifact-card"
-      :class="{ 'artifact-card--dragging': artifactDragState?.artifactId === artifact.id }"
-      :style="{ left: `${artifact.x}px`, top: `${artifact.y}px` }"
-      tabindex="0"
-      aria-label="Generated artifact. Drag to move."
-      @pointerdown="handleArtifactPointerDown($event, artifact)"
-      @pointermove="handleArtifactPointerMove"
-      @pointerup="handleArtifactPointerUp"
-    >
-      <div class="artifact-card__eyebrow">generated {{ artifact.createdAt }}</div>
-      <h2>{{ artifact.title }}</h2>
-      <p>{{ artifact.prompt }}</p>
-      <div class="artifact-card__footer">
-        <span>mock artifact</span>
-        <button type="button" @pointerdown.stop>inspect</button>
-      </div>
-    </section>
+    <div class="world" :style="worldTransform">
+      <section
+        v-for="artifact in artifacts"
+        :key="artifact.id"
+        class="artifact-card"
+        :class="{
+          'artifact-card--dragging': artifactDragState?.artifactId === artifact.id,
+          'artifact-card--selected': selectedArtifactId === artifact.id,
+        }"
+        :style="{
+          left: `${artifact.x}px`,
+          top: `${artifact.y}px`,
+          width: `${artifact.width}px`,
+          minHeight: `${artifact.height}px`,
+        }"
+        tabindex="0"
+        aria-label="Generated artifact. Drag to move."
+        @pointerdown="handleArtifactPointerDown($event, artifact)"
+        @pointermove="handleArtifactPointerMove"
+        @pointerup="handleArtifactPointerUp"
+      >
+        <span v-if="selectedArtifactId === artifact.id" class="artifact-card__spark" aria-hidden="true" />
+        <div class="artifact-card__eyebrow">generated {{ artifact.createdAt }}</div>
+        <h2>{{ artifact.title }}</h2>
+        <p>{{ artifact.prompt }}</p>
+        <div class="artifact-card__footer">
+          <span>mock artifact</span>
+          <button type="button" @pointerdown.stop>inspect</button>
+        </div>
+      </section>
 
-    <button
-      class="seed-dot"
-      :class="dotClass"
-      :style="{ left: `${dot.x}px`, top: `${dot.y}px` }"
-      type="button"
-      aria-label="Create from this point"
-      @pointerdown="handleDotPointerDown"
-      @pointermove="handleDotPointerMove"
-      @pointerup="handleDotPointerUp"
-    >
-      <span class="seed-dot__core" />
-    </button>
+      <button
+        class="seed-dot"
+        :class="dotClass"
+        :style="{ left: `${dot.x}px`, top: `${dot.y}px` }"
+        type="button"
+        aria-label="Create from this point"
+        @pointerdown="handleDotPointerDown"
+        @pointermove="handleDotPointerMove"
+        @pointerup="handleDotPointerUp"
+      >
+        <span class="seed-dot__core" />
+      </button>
+    </div>
+
+    <div class="canvas-hint" aria-hidden="true">
+      wheel zoom · drag background pan · F fit · 0 reset
+    </div>
 
     <form
       class="command-bar"

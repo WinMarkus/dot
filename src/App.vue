@@ -10,6 +10,15 @@ type Artifact = {
   createdAt: string;
 };
 
+type DragState = {
+  pointerId: number;
+  startPointerX: number;
+  startPointerY: number;
+  startX: number;
+  startY: number;
+  moved: boolean;
+};
+
 const dot = ref({ x: 0, y: 0 });
 const isDotActive = ref(false);
 const isGenerating = ref(false);
@@ -17,14 +26,8 @@ const prompt = ref('');
 const artifacts = ref<Artifact[]>([]);
 const promptInput = ref<HTMLInputElement | null>(null);
 
-const dragState = ref<{
-  pointerId: number;
-  startPointerX: number;
-  startPointerY: number;
-  startDotX: number;
-  startDotY: number;
-  moved: boolean;
-} | null>(null);
+const dotDragState = ref<DragState | null>(null);
+const artifactDragState = ref<(DragState & { artifactId: string }) | null>(null);
 
 const dotClass = computed(() => ({
   'seed-dot--active': isDotActive.value,
@@ -35,6 +38,33 @@ function centerDot() {
   dot.value = {
     x: window.innerWidth / 2,
     y: window.innerHeight / 2,
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getArtifactBounds() {
+  const padding = 20;
+  const width = Math.min(320, window.innerWidth - padding * 2);
+  const height = 210;
+
+  return {
+    padding,
+    width,
+    height,
+    maxX: Math.max(padding, window.innerWidth - width - padding),
+    maxY: Math.max(padding, window.innerHeight - height - padding),
+  };
+}
+
+function getSafeArtifactPosition(x: number, y: number) {
+  const bounds = getArtifactBounds();
+
+  return {
+    x: clamp(x, bounds.padding, bounds.maxX),
+    y: clamp(y, bounds.padding, bounds.maxY),
   };
 }
 
@@ -51,18 +81,18 @@ function handleDotPointerDown(event: PointerEvent) {
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
 
-  dragState.value = {
+  dotDragState.value = {
     pointerId: event.pointerId,
     startPointerX: event.clientX,
     startPointerY: event.clientY,
-    startDotX: dot.value.x,
-    startDotY: dot.value.y,
+    startX: dot.value.x,
+    startY: dot.value.y,
     moved: false,
   };
 }
 
 function handleDotPointerMove(event: PointerEvent) {
-  const state = dragState.value;
+  const state = dotDragState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
   const dx = event.clientX - state.startPointerX;
@@ -73,22 +103,65 @@ function handleDotPointerMove(event: PointerEvent) {
   }
 
   dot.value = {
-    x: state.startDotX + dx,
-    y: state.startDotY + dy,
+    x: state.startX + dx,
+    y: state.startY + dy,
   };
 }
 
 function handleDotPointerUp(event: PointerEvent) {
-  const state = dragState.value;
+  const state = dotDragState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
   const target = event.currentTarget as HTMLElement;
   target.releasePointerCapture(event.pointerId);
-  dragState.value = null;
+  dotDragState.value = null;
 
   if (!state.moved) {
     activatePrompt();
   }
+}
+
+function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
+  const target = event.currentTarget as HTMLElement;
+  target.setPointerCapture(event.pointerId);
+
+  artifactDragState.value = {
+    artifactId: artifact.id,
+    pointerId: event.pointerId,
+    startPointerX: event.clientX,
+    startPointerY: event.clientY,
+    startX: artifact.x,
+    startY: artifact.y,
+    moved: false,
+  };
+}
+
+function handleArtifactPointerMove(event: PointerEvent) {
+  const state = artifactDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  const dx = event.clientX - state.startPointerX;
+  const dy = event.clientY - state.startPointerY;
+
+  if (Math.abs(dx) + Math.abs(dy) > 4) {
+    state.moved = true;
+  }
+
+  const artifact = artifacts.value.find((item) => item.id === state.artifactId);
+  if (!artifact) return;
+
+  const nextPosition = getSafeArtifactPosition(state.startX + dx, state.startY + dy);
+  artifact.x = nextPosition.x;
+  artifact.y = nextPosition.y;
+}
+
+function handleArtifactPointerUp(event: PointerEvent) {
+  const state = artifactDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  const target = event.currentTarget as HTMLElement;
+  target.releasePointerCapture(event.pointerId);
+  artifactDragState.value = null;
 }
 
 function closePrompt() {
@@ -113,12 +186,14 @@ async function submitPrompt() {
 
   await new Promise((resolve) => window.setTimeout(resolve, 850));
 
+  const position = getSafeArtifactPosition(dot.value.x + 34, dot.value.y - 28);
+
   artifacts.value.push({
     id: crypto.randomUUID(),
     title: makeArtifactTitle(value),
     prompt: value,
-    x: dot.value.x + 34,
-    y: dot.value.y - 28,
+    x: position.x,
+    y: position.y,
     createdAt: new Intl.DateTimeFormat('en', {
       hour: '2-digit',
       minute: '2-digit',
@@ -155,16 +230,20 @@ onUnmounted(() => {
       v-for="artifact in artifacts"
       :key="artifact.id"
       class="artifact-card"
+      :class="{ 'artifact-card--dragging': artifactDragState?.artifactId === artifact.id }"
       :style="{ left: `${artifact.x}px`, top: `${artifact.y}px` }"
       tabindex="0"
-      aria-label="Generated artifact"
+      aria-label="Generated artifact. Drag to move."
+      @pointerdown="handleArtifactPointerDown($event, artifact)"
+      @pointermove="handleArtifactPointerMove"
+      @pointerup="handleArtifactPointerUp"
     >
       <div class="artifact-card__eyebrow">generated {{ artifact.createdAt }}</div>
       <h2>{{ artifact.title }}</h2>
       <p>{{ artifact.prompt }}</p>
       <div class="artifact-card__footer">
         <span>mock artifact</span>
-        <button type="button">inspect</button>
+        <button type="button" @pointerdown.stop>inspect</button>
       </div>
     </section>
 

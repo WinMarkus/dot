@@ -242,7 +242,7 @@ function handleArtifactPointerUp(event: PointerEvent) {
 }
 
 function handleWorkspacePointerDown(event: PointerEvent) {
-  if ((event.target as HTMLElement).closest('.command-bar')) return;
+  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help')) return;
 
   selectedArtifactId.value = null;
 
@@ -431,13 +431,37 @@ onUnmounted(() => {
         @pointermove="handleArtifactPointerMove"
         @pointerup="handleArtifactPointerUp"
       >
-        <span v-if="selectedArtifactId === artifact.id" class="artifact-card__spark" aria-hidden="true" />
+        <div
+          v-if="selectedArtifactId === artifact.id"
+          class="artifact-action-system"
+          aria-label="Artifact actions"
+          @pointerdown.stop
+          @pointermove.stop
+          @pointerup.stop
+          @click.stop
+        >
+          <button class="artifact-action-root" type="button" aria-label="Show artifact actions">
+            <span />
+          </button>
+          <span class="artifact-action-line artifact-action-line--inspect" />
+          <span class="artifact-action-line artifact-action-line--edit" />
+          <span class="artifact-action-line artifact-action-line--fork" />
+          <button class="artifact-action artifact-action--inspect" type="button" data-label="inspect" aria-label="Inspect artifact">
+            i
+          </button>
+          <button class="artifact-action artifact-action--edit" type="button" data-label="prompt" aria-label="Prompt this artifact">
+            ✎
+          </button>
+          <button class="artifact-action artifact-action--fork" type="button" data-label="fork" aria-label="Fork artifact">
+            ⟡
+          </button>
+        </div>
+
         <div class="artifact-card__eyebrow">generated {{ artifact.createdAt }}</div>
         <h2>{{ artifact.title }}</h2>
         <p>{{ artifact.prompt }}</p>
         <div class="artifact-card__footer">
           <span>mock artifact</span>
-          <button type="button" @pointerdown.stop>inspect</button>
         </div>
       </section>
 
@@ -455,8 +479,14 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <div class="canvas-hint" aria-hidden="true">
-      wheel zoom · drag background pan · F fit · 0 reset
+    <div class="canvas-help">
+      <button class="canvas-help__trigger" type="button" aria-label="Show canvas controls">?</button>
+      <div class="canvas-help__panel" role="tooltip">
+        <span>wheel zoom</span>
+        <span>drag background pan</span>
+        <span>F fit</span>
+        <span>0 reset</span>
+      </div>
     </div>
 
     <form

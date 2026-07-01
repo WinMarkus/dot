@@ -453,20 +453,20 @@ input {
 }
 
 .artifact-action--inspect {
-  top: 16px;
-  right: 91px;
+  top: 15px;
+  right: 92px;
   transition-delay: 70ms;
 }
 
 .artifact-action--edit {
-  top: 66px;
-  right: 82px;
+  top: 64px;
+  right: 92px;
   transition-delay: 190ms;
 }
 
 .artifact-action--fork {
-  top: 74px;
-  right: 18px;
+  top: 76px;
+  right: 30px;
   transition-delay: 310ms;
 }
 
@@ -474,46 +474,6 @@ input {
 .artifact-action-system:focus-within .artifact-action {
   opacity: 1;
   transform: translate(0, 0) scale(1);
-}
-
-.artifact-action-line {
-  position: absolute;
-  top: 34px;
-  right: 48px;
-  height: 1px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(255, 243, 199, 0.76), rgba(255, 188, 117, 0));
-  opacity: 0;
-  pointer-events: none;
-  transform: scaleX(0);
-  transform-origin: right center;
-  transition:
-    opacity 320ms ease,
-    transform 880ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.artifact-action-line--inspect {
-  width: 43px;
-  rotate: -12deg;
-  transition-delay: 40ms;
-}
-
-.artifact-action-line--edit {
-  width: 49px;
-  rotate: 56deg;
-  transition-delay: 150ms;
-}
-
-.artifact-action-line--fork {
-  width: 55px;
-  rotate: 82deg;
-  transition-delay: 260ms;
-}
-
-.artifact-action-system:hover .artifact-action-line,
-.artifact-action-system:focus-within .artifact-action-line {
-  opacity: 1;
-  transform: scaleX(1);
 }
 
 .artifact-card__eyebrow {

@@ -49,6 +49,7 @@ type DeletedToast = {
 
 type DeletedMarker = {
   id: string;
+  artifact: Artifact;
   title: string;
   x: number;
   y: number;
@@ -553,6 +554,7 @@ function forkArtifact(artifact: Artifact) {
 function materializeDeletedMarker(toast: DeletedToast) {
   deletedMarkers.value.push({
     id: crypto.randomUUID(),
+    artifact: cloneArtifact(toast.artifact),
     title: toast.artifact.title,
     x: toast.x,
     y: toast.y,
@@ -592,6 +594,14 @@ function undoDelete(toast: DeletedToast) {
   artifacts.value.push(toast.artifact);
   deletedToasts.value = deletedToasts.value.filter((item) => item.id !== toast.id);
   selectedArtifactId.value = toast.artifact.id;
+}
+
+function revitalizeDeletedMarker(marker: DeletedMarker) {
+  const restored = cloneArtifact(marker.artifact);
+  artifacts.value.push(restored);
+  deletedMarkers.value = deletedMarkers.value.filter((item) => item.id !== marker.id);
+  selectedArtifactId.value = restored.id;
+  activeActionArtifactId.value = null;
 }
 
 function clearDeletedMarkers() {
@@ -696,11 +706,14 @@ onUnmounted(() => {
         :key="marker.id"
         class="deleted-marker"
         type="button"
-        :title="`Deleted: ${marker.title}`"
-        :aria-label="`Deleted marker for ${marker.title}`"
+        :title="`Revitalise: ${marker.title}`"
+        :aria-label="`Revitalise deleted artifact ${marker.title}`"
         :style="{ left: `${marker.x}px`, top: `${marker.y}px` }"
         @pointerdown.stop
-      />
+        @click="revitalizeDeletedMarker(marker)"
+      >
+        <span>revitalise</span>
+      </button>
 
       <div
         v-for="toast in deletedToasts"

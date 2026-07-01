@@ -55,14 +55,14 @@
 .deleted-marker {
   position: absolute;
   z-index: 4;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
   transform: translate(-50%, -50%);
-  cursor: default;
+  cursor: pointer;
 }
 
 .deleted-marker::before,
@@ -79,11 +79,51 @@
 }
 
 .deleted-marker::after {
-  inset: 8px;
+  inset: 10px;
   background: #ff5f57;
   box-shadow:
     0 0 14px rgba(255, 95, 87, 0.9),
     0 0 32px rgba(255, 95, 87, 0.34);
+  transition:
+    background 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.deleted-marker:hover::after,
+.deleted-marker:focus-visible::after {
+  background: #ffbc75;
+  box-shadow:
+    0 0 16px rgba(255, 188, 117, 0.95),
+    0 0 36px rgba(255, 188, 117, 0.42);
+  transform: scale(1.35);
+}
+
+.deleted-marker span {
+  position: absolute;
+  left: 50%;
+  top: -28px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: rgba(255, 250, 240, 0.86);
+  background: rgba(19, 19, 16, 0.86);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(5px) scale(0.96);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.deleted-marker:hover span,
+.deleted-marker:focus-visible span {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .marker-control {

@@ -6,8 +6,23 @@ type Point = {
   y: number;
 };
 
+type ArtifactKind = 'text' | 'component' | 'image' | 'video' | 'unknown';
+
+type ArtifactContent = {
+  raw: string;
+  markdown?: string;
+  description?: string;
+  componentName?: string;
+  previewTitle?: string;
+  alt?: string;
+  storyboard?: string[];
+  actions?: string[];
+  summary?: string;
+};
+
 type Artifact = {
   id: string;
+  kind: ArtifactKind;
   title: string;
   prompt: string;
   x: number;
@@ -15,6 +30,13 @@ type Artifact = {
   width: number;
   height: number;
   createdAt: string;
+  content: ArtifactContent;
+};
+
+type GeneratedArtifact = {
+  kind: ArtifactKind;
+  title: string;
+  content: ArtifactContent;
 };
 
 type DragState = {
@@ -32,8 +54,12 @@ type CameraState = {
   zoom: number;
 };
 
+type PromptMode =
+  | { type: 'create' }
+  | { type: 'edit'; artifactId: string };
+
 const ARTIFACT_WIDTH = 320;
-const ARTIFACT_HEIGHT = 210;
+const ARTIFACT_HEIGHT = 230;
 const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 2.4;
 
@@ -42,9 +68,12 @@ const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
 const isDotActive = ref(false);
 const isGenerating = ref(false);
 const prompt = ref('');
+const promptMode = ref<PromptMode>({ type: 'create' });
 const artifacts = ref<Artifact[]>([]);
 const promptInput = ref<HTMLInputElement | null>(null);
 const selectedArtifactId = ref<string | null>(null);
+const activeActionArtifactId = ref<string | null>(null);
+const inspectedArtifactId = ref<string | null>(null);
 
 const dotDragState = ref<DragState | null>(null);
 const artifactDragState = ref<(DragState & { artifactId: string }) | null>(null);
@@ -63,6 +92,23 @@ const gridStyle = computed(() => ({
   backgroundPosition: `${camera.value.x}px ${camera.value.y}px`,
   backgroundSize: `${44 * camera.value.zoom}px ${44 * camera.value.zoom}px`,
 }));
+
+const promptPlaceholder = computed(() =>
+  promptMode.value.type === 'edit' ? 'what should change about this?' : 'what do we want to build today?',
+);
+
+const promptActionLabel = computed(() => {
+  if (isGenerating.value) return promptMode.value.type === 'edit' ? 'changing' : 'creating';
+  return promptMode.value.type === 'edit' ? 'change' : 'create';
+});
+
+const inspectedArtifact = computed(() =>
+  artifacts.value.find((artifact) => artifact.id === inspectedArtifactId.value) ?? null,
+);
+
+const inspectedArtifactRaw = computed(() =>
+  inspectedArtifact.value ? JSON.stringify(inspectedArtifact.value.content, null, 2) : '',
+);
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -141,11 +187,128 @@ function chooseArtifactPosition(seed: Point) {
   return getViewportSafeWorldPoint({ x: margin, y: margin + 24 });
 }
 
+function makeArtifactTitle(value: string) {
+  const clean = value.trim().replace(/\s+/g, ' ');
+  if (!clean) return 'Untitled artifact';
+
+  return clean.length > 42 ? `${clean.slice(0, 39)}...` : clean;
+}
+
+function detectArtifactKind(value: string, fallback: ArtifactKind = 'unknown'): ArtifactKind {
+  const text = value.toLowerCase();
+
+  if (/\b(image|picture|photo|illustration|logo|icon|poster|visual|wallpaper)\b/.test(text)) return 'image';
+  if (/\b(video|movie|clip|animation|trailer|reel)\b/.test(text)) return 'video';
+  if (/\b(component|button|card|form|login|dashboard|widget|ui|vue|react|page|modal)\b/.test(text)) return 'component';
+  if (/\b(text|copy|poem|story|essay|markdown|explain|write|article|headline)\b/.test(text)) return 'text';
+
+  return fallback;
+}
+
+function fakeGenerateArtifact(value: string, previous?: Artifact): GeneratedArtifact {
+  const kind = detectArtifactKind(value, previous?.kind ?? 'unknown');
+  const title = previous ? makeArtifactTitle(`${previous.title} · ${value}`) : makeArtifactTitle(value);
+
+  if (kind === 'text') {
+    const markdown = previous
+      ? `### ${previous.title}\n\n${value}\n\nThis is the next written version of the artifact. The real generator will preserve intent, voice, and structure.`
+      : `### ${title}\n\n${value}\n\nThis is a structured text artifact placeholder.`;
+
+    return {
+      kind,
+      title,
+      content: {
+        raw: markdown,
+        markdown,
+        summary: 'Text artifact with markdown preview.',
+      },
+    };
+  }
+
+  if (kind === 'component') {
+    return {
+      kind,
+      title,
+      content: {
+        raw: `<${title.replace(/[^a-z0-9]/gi, '') || 'GeneratedComponent'} />`,
+        componentName: `${title.replace(/[^a-z0-9]/gi, '') || 'Generated'}Component`,
+        previewTitle: title,
+        actions: ['primary action', 'secondary action'],
+        summary: 'Component artifact rendered as a safe preview, not executable code.',
+      },
+    };
+  }
+
+  if (kind === 'image') {
+    return {
+      kind,
+      title,
+      content: {
+        raw: `Image prompt: ${value}`,
+        description: value,
+        alt: `Generated image placeholder for: ${value}`,
+        summary: 'Image artifact placeholder.',
+      },
+    };
+  }
+
+  if (kind === 'video') {
+    return {
+      kind,
+      title,
+      content: {
+        raw: `Video prompt: ${value}`,
+        description: value,
+        storyboard: ['Opening frame', 'Main motion', 'End frame'],
+        summary: 'Video artifact placeholder with storyboard beats.',
+      },
+    };
+  }
+
+  return {
+    kind,
+    title,
+    content: {
+      raw: value,
+      summary: 'Unknown artifact type. This will later be resolved by the model router.',
+    },
+  };
+}
+
+function createArtifactFromPrompt(value: string, position: Point): Artifact {
+  const generated = fakeGenerateArtifact(value);
+
+  return {
+    id: crypto.randomUUID(),
+    kind: generated.kind,
+    title: generated.title,
+    prompt: value,
+    x: position.x,
+    y: position.y,
+    width: ARTIFACT_WIDTH,
+    height: ARTIFACT_HEIGHT,
+    createdAt: new Intl.DateTimeFormat('en', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date()),
+    content: generated.content,
+  };
+}
+
+function cloneArtifactContent(content: ArtifactContent): ArtifactContent {
+  return JSON.parse(JSON.stringify(content)) as ArtifactContent;
+}
+
 function activatePrompt() {
   if (isGenerating.value) return;
 
   isDotActive.value = true;
   nextTick(() => promptInput.value?.focus());
+}
+
+function resetPromptMode() {
+  promptMode.value = { type: 'create' };
+  prompt.value = '';
 }
 
 function handleDotPointerDown(event: PointerEvent) {
@@ -192,6 +355,7 @@ function handleDotPointerUp(event: PointerEvent) {
   dotDragState.value = null;
 
   if (!state.moved) {
+    resetPromptMode();
     activatePrompt();
   }
 }
@@ -242,9 +406,10 @@ function handleArtifactPointerUp(event: PointerEvent) {
 }
 
 function handleWorkspacePointerDown(event: PointerEvent) {
-  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help')) return;
+  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel')) return;
 
   selectedArtifactId.value = null;
+  activeActionArtifactId.value = null;
 
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
@@ -297,14 +462,7 @@ function closePrompt() {
   if (isGenerating.value) return;
 
   isDotActive.value = false;
-  prompt.value = '';
-}
-
-function makeArtifactTitle(value: string) {
-  const clean = value.trim().replace(/\s+/g, ' ');
-  if (!clean) return 'Untitled artifact';
-
-  return clean.length > 42 ? `${clean.slice(0, 39)}...` : clean;
+  resetPromptMode();
 }
 
 async function submitPrompt() {
@@ -315,25 +473,70 @@ async function submitPrompt() {
 
   await new Promise((resolve) => window.setTimeout(resolve, 850));
 
-  const position = chooseArtifactPosition(dot.value);
+  if (promptMode.value.type === 'edit') {
+    const artifact = artifacts.value.find((item) => item.id === promptMode.value.artifactId);
 
-  artifacts.value.push({
+    if (artifact) {
+      const generated = fakeGenerateArtifact(value, artifact);
+      artifact.kind = generated.kind;
+      artifact.title = generated.title;
+      artifact.prompt = value;
+      artifact.content = generated.content;
+      selectedArtifactId.value = artifact.id;
+      inspectedArtifactId.value = inspectedArtifactId.value === artifact.id ? artifact.id : inspectedArtifactId.value;
+    }
+  } else {
+    const artifact = createArtifactFromPrompt(value, chooseArtifactPosition(dot.value));
+    artifacts.value.push(artifact);
+    selectedArtifactId.value = artifact.id;
+    activeActionArtifactId.value = null;
+  }
+
+  isDotActive.value = false;
+  isGenerating.value = false;
+  resetPromptMode();
+}
+
+function inspectArtifact(artifact: Artifact) {
+  inspectedArtifactId.value = artifact.id;
+  selectedArtifactId.value = artifact.id;
+  activeActionArtifactId.value = null;
+}
+
+function startPromptArtifact(artifact: Artifact) {
+  promptMode.value = { type: 'edit', artifactId: artifact.id };
+  prompt.value = '';
+  selectedArtifactId.value = artifact.id;
+  activeActionArtifactId.value = null;
+  activatePrompt();
+}
+
+function forkArtifact(artifact: Artifact) {
+  const fork: Artifact = {
+    ...artifact,
     id: crypto.randomUUID(),
-    title: makeArtifactTitle(value),
-    prompt: value,
-    x: position.x,
-    y: position.y,
-    width: ARTIFACT_WIDTH,
-    height: ARTIFACT_HEIGHT,
+    title: `Fork of ${artifact.title}`,
+    x: artifact.x + 48,
+    y: artifact.y + 48,
     createdAt: new Intl.DateTimeFormat('en', {
       hour: '2-digit',
       minute: '2-digit',
     }).format(new Date()),
-  });
+    content: cloneArtifactContent(artifact.content),
+  };
 
-  prompt.value = '';
-  isDotActive.value = false;
-  isGenerating.value = false;
+  artifacts.value.push(fork);
+  selectedArtifactId.value = fork.id;
+  activeActionArtifactId.value = null;
+}
+
+function toggleArtifactActions(artifact: Artifact) {
+  selectedArtifactId.value = artifact.id;
+  activeActionArtifactId.value = activeActionArtifactId.value === artifact.id ? null : artifact.id;
+}
+
+function closeInspector() {
+  inspectedArtifactId.value = null;
 }
 
 function fitAll() {
@@ -372,7 +575,13 @@ function handleKeydown(event: KeyboardEvent) {
   const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
 
   if (event.key === 'Escape') {
+    if (inspectedArtifactId.value) {
+      closeInspector();
+      return;
+    }
+
     closePrompt();
+    activeActionArtifactId.value = null;
   }
 
   if (isTyping) return;
@@ -434,31 +643,87 @@ onUnmounted(() => {
         <div
           v-if="selectedArtifactId === artifact.id"
           class="artifact-action-system"
+          :class="{ 'artifact-action-system--open': activeActionArtifactId === artifact.id }"
           aria-label="Artifact actions"
           @pointerdown.stop
           @pointermove.stop
           @pointerup.stop
           @click.stop
         >
-          <button class="artifact-action-root" type="button" aria-label="Show artifact actions">
+          <button
+            class="artifact-action-root"
+            type="button"
+            aria-label="Show artifact actions"
+            @click="toggleArtifactActions(artifact)"
+          >
             <span />
           </button>
-          <button class="artifact-action artifact-action--inspect" type="button" data-label="inspect" aria-label="Inspect artifact">
+          <button
+            class="artifact-action artifact-action--inspect"
+            type="button"
+            data-label="inspect"
+            aria-label="Inspect artifact"
+            @click="inspectArtifact(artifact)"
+          >
             i
           </button>
-          <button class="artifact-action artifact-action--edit" type="button" data-label="prompt" aria-label="Prompt this artifact">
+          <button
+            class="artifact-action artifact-action--edit"
+            type="button"
+            data-label="prompt"
+            aria-label="Prompt this artifact"
+            @click="startPromptArtifact(artifact)"
+          >
             ✎
           </button>
-          <button class="artifact-action artifact-action--fork" type="button" data-label="fork" aria-label="Fork artifact">
+          <button
+            class="artifact-action artifact-action--fork"
+            type="button"
+            data-label="fork"
+            aria-label="Fork artifact"
+            @click="forkArtifact(artifact)"
+          >
             ⟡
           </button>
         </div>
 
-        <div class="artifact-card__eyebrow">generated {{ artifact.createdAt }}</div>
+        <div class="artifact-card__eyebrow">{{ artifact.kind }} · {{ artifact.createdAt }}</div>
         <h2>{{ artifact.title }}</h2>
-        <p>{{ artifact.prompt }}</p>
-        <div class="artifact-card__footer">
-          <span>mock artifact</span>
+
+        <div class="artifact-content" :class="`artifact-content--${artifact.kind}`">
+          <template v-if="artifact.kind === 'text'">
+            <p>{{ artifact.content.markdown }}</p>
+          </template>
+
+          <template v-else-if="artifact.kind === 'component'">
+            <div class="component-preview">
+              <span class="component-preview__label">{{ artifact.content.componentName }}</span>
+              <strong>{{ artifact.content.previewTitle }}</strong>
+              <div class="component-preview__actions">
+                <span v-for="action in artifact.content.actions" :key="action">{{ action }}</span>
+              </div>
+            </div>
+          </template>
+
+          <template v-else-if="artifact.kind === 'image'">
+            <div class="image-preview" role="img" :aria-label="artifact.content.alt">
+              <span />
+              <p>{{ artifact.content.description }}</p>
+            </div>
+          </template>
+
+          <template v-else-if="artifact.kind === 'video'">
+            <div class="video-preview">
+              <span class="video-preview__play">▶</span>
+              <ol>
+                <li v-for="beat in artifact.content.storyboard" :key="beat">{{ beat }}</li>
+              </ol>
+            </div>
+          </template>
+
+          <template v-else>
+            <p>{{ artifact.content.summary }}</p>
+          </template>
         </div>
       </section>
 
@@ -486,6 +751,27 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <aside v-if="inspectedArtifact" class="inspector-panel" aria-label="Artifact inspector" @pointerdown.stop>
+      <button class="inspector-panel__close" type="button" aria-label="Close inspector" @click="closeInspector">×</button>
+      <div class="inspector-panel__eyebrow">inspect</div>
+      <h2>{{ inspectedArtifact.title }}</h2>
+      <dl>
+        <div>
+          <dt>type</dt>
+          <dd>{{ inspectedArtifact.kind }}</dd>
+        </div>
+        <div>
+          <dt>created</dt>
+          <dd>{{ inspectedArtifact.createdAt }}</dd>
+        </div>
+        <div>
+          <dt>prompt</dt>
+          <dd>{{ inspectedArtifact.prompt }}</dd>
+        </div>
+      </dl>
+      <pre>{{ inspectedArtifactRaw }}</pre>
+    </aside>
+
     <form
       class="command-bar"
       :class="{ 'command-bar--visible': isDotActive || isGenerating }"
@@ -493,17 +779,17 @@ onUnmounted(() => {
     >
       <div class="command-bar__status">
         <span class="command-bar__dot" />
-        <span>{{ isGenerating ? 'shaping...' : 'origin is listening' }}</span>
+        <span>{{ isGenerating ? 'shaping...' : promptMode.type === 'edit' ? 'artifact is listening' : 'origin is listening' }}</span>
       </div>
       <input
         ref="promptInput"
         v-model="prompt"
         :disabled="isGenerating"
-        placeholder="what do we want to build today?"
+        :placeholder="promptPlaceholder"
         autocomplete="off"
       />
       <button type="submit" :disabled="!prompt.trim() || isGenerating">
-        {{ isGenerating ? 'creating' : 'create' }}
+        {{ promptActionLabel }}
       </button>
     </form>
   </main>

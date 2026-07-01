@@ -119,7 +119,7 @@ async function submitPrompt() {
     prompt: value,
     x: dot.value.x + 34,
     y: dot.value.y - 28,
-    createdAt: new Intl.TimeFormat('en', {
+    createdAt: new Intl.DateTimeFormat('en', {
       hour: '2-digit',
       minute: '2-digit',
     }).format(new Date()),

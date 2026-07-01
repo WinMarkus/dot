@@ -2,7 +2,7 @@
 
 A minimal generative creation canvas prototype.
 
-Milestone 1 implements the core interaction:
+## Current interaction model
 
 - blank spatial workspace
 - draggable pulsing green seed dot
@@ -10,6 +10,11 @@ Milestone 1 implements the core interaction:
 - active dot turns warm orange
 - submit a prompt to create a mock artifact near the dot
 - generated artifacts materialize onto the canvas
+- generated artifacts are draggable
+- drag the background to pan the camera
+- mouse wheel zooms the camera
+- press `F` to fit all current objects
+- press `0` to reset the camera to the seed dot
 
 ## Run locally
 

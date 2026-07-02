@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
-type Point = {
-  x: number;
-  y: number;
-};
-
+type Point = { x: number; y: number };
 type ArtifactKind = 'text' | 'object' | 'image' | 'video' | 'unknown';
+type PromptMode = { type: 'create' } | { type: 'edit'; artifactId: string };
 
 type ArtifactFacet = {
   label: string;
@@ -77,10 +74,6 @@ type CameraState = {
   zoom: number;
 };
 
-type PromptMode =
-  | { type: 'create' }
-  | { type: 'edit'; artifactId: string };
-
 const ARTIFACT_WIDTH = 320;
 const ARTIFACT_HEIGHT = 230;
 const MIN_ZOOM = 0.35;
@@ -94,10 +87,12 @@ const isGenerating = ref(false);
 const regeneratingArtifactId = ref<string | null>(null);
 const prompt = ref('');
 const promptMode = ref<PromptMode>({ type: 'create' });
+const promptInput = ref<HTMLInputElement | null>(null);
+
 const artifacts = ref<Artifact[]>([]);
 const deletedToasts = ref<DeletedToast[]>([]);
 const deletedMarkers = ref<DeletedMarker[]>([]);
-const promptInput = ref<HTMLInputElement | null>(null);
+
 const selectedArtifactId = ref<string | null>(null);
 const activeActionArtifactId = ref<string | null>(null);
 const inspectedArtifactId = ref<string | null>(null);
@@ -139,6 +134,18 @@ const inspectedArtifactRaw = computed(() =>
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function nowLabel() {
+  return new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit' }).format(new Date());
+}
+
+function cloneArtifact(artifact: Artifact): Artifact {
+  return JSON.parse(JSON.stringify(artifact)) as Artifact;
+}
+
+function uniq(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function screenToWorld(point: Point): Point {
@@ -209,31 +216,13 @@ function chooseArtifactPosition(seed: Point) {
     );
   });
 
-  if (fittingCandidate) return fittingCandidate;
-
-  return getViewportSafeWorldPoint({ x: margin, y: margin + 24 });
+  return fittingCandidate ?? getViewportSafeWorldPoint({ x: margin, y: margin + 24 });
 }
 
 function makeArtifactTitle(value: string) {
   const clean = value.trim().replace(/\s+/g, ' ');
   if (!clean) return 'Untitled artifact';
-
   return clean.length > 42 ? `${clean.slice(0, 39)}...` : clean;
-}
-
-function formatTimestamp() {
-  return new Intl.DateTimeFormat('en', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date());
-}
-
-function cloneArtifact(artifact: Artifact): Artifact {
-  return JSON.parse(JSON.stringify(artifact)) as Artifact;
-}
-
-function uniq(values: string[]) {
-  return [...new Set(values.filter(Boolean))];
 }
 
 function inferObjectTags(value: string) {
@@ -273,14 +262,11 @@ function detectArtifactKind(value: string, fallback: ArtifactKind = 'unknown'): 
 }
 
 function createObjectArtifactContent(value: string): ArtifactContent {
-  const tags = inferObjectTags(value);
-  const connections = inferConnections(value);
-
   return {
     raw: value,
     description: value,
-    tags,
-    connections,
+    tags: inferObjectTags(value),
+    connections: inferConnections(value),
     capabilities: ['accepts detail', 'can connect', 'can transform'],
     facets: [
       { label: 'role', value: 'semantic object' },
@@ -378,14 +364,13 @@ function createArtifactFromPrompt(value: string, position: Point): Artifact {
     y: position.y,
     width: ARTIFACT_WIDTH,
     height: ARTIFACT_HEIGHT,
-    createdAt: formatTimestamp(),
+    createdAt: nowLabel(),
     content: generated.content,
   };
 }
 
 function activatePrompt() {
   if (isGenerating.value) return;
-
   isDotActive.value = true;
   nextTick(() => promptInput.value?.focus());
 }
@@ -397,7 +382,6 @@ function resetPromptMode() {
 
 function handleDotPointerDown(event: PointerEvent) {
   if (isGenerating.value) return;
-
   event.stopPropagation();
 
   const target = event.currentTarget as HTMLElement;
@@ -424,18 +408,14 @@ function handleDotPointerMove(event: PointerEvent) {
     state.moved = true;
   }
 
-  dot.value = {
-    x: state.startX + dx,
-    y: state.startY + dy,
-  };
+  dot.value = { x: state.startX + dx, y: state.startY + dy };
 }
 
 function handleDotPointerUp(event: PointerEvent) {
   const state = dotDragState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
-  const target = event.currentTarget as HTMLElement;
-  target.releasePointerCapture(event.pointerId);
+  (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
   dotDragState.value = null;
 
   if (!state.moved) {
@@ -484,8 +464,7 @@ function handleArtifactPointerUp(event: PointerEvent) {
   const state = artifactDragState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
-  const target = event.currentTarget as HTMLElement;
-  target.releasePointerCapture(event.pointerId);
+  (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
   artifactDragState.value = null;
 }
 
@@ -519,32 +498,24 @@ function handleWorkspacePointerMove(event: PointerEvent) {
     state.moved = true;
   }
 
-  camera.value = {
-    ...camera.value,
-    x: state.startX + dx,
-    y: state.startY + dy,
-  };
+  camera.value = { ...camera.value, x: state.startX + dx, y: state.startY + dy };
 }
 
 function handleWorkspacePointerUp(event: PointerEvent) {
   const state = panState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
-  const target = event.currentTarget as HTMLElement;
-  target.releasePointerCapture(event.pointerId);
+  (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
   panState.value = null;
 }
 
 function handleWheel(event: WheelEvent) {
   event.preventDefault();
-
-  const zoomFactor = event.deltaY > 0 ? 0.92 : 1.08;
-  zoomAt({ x: event.clientX, y: event.clientY }, camera.value.zoom * zoomFactor);
+  zoomAt({ x: event.clientX, y: event.clientY }, camera.value.zoom * (event.deltaY > 0 ? 0.92 : 1.08));
 }
 
 function closePrompt() {
   if (isGenerating.value) return;
-
   isDotActive.value = false;
   resetPromptMode();
 }
@@ -570,12 +541,13 @@ async function regenerateArtifact(artifact: Artifact) {
 }
 
 function regenerateCurrentEditArtifact() {
-  if (promptMode.value.type !== 'edit') return;
+  const mode = promptMode.value;
+  if (mode.type !== 'edit') return;
 
-  const artifact = artifacts.value.find((item) => item.id === promptMode.value.artifactId);
-  if (!artifact) return;
-
-  regenerateArtifact(artifact);
+  const artifact = artifacts.value.find((item) => item.id === mode.artifactId);
+  if (artifact) {
+    regenerateArtifact(artifact);
+  }
 }
 
 async function submitPrompt() {
@@ -589,7 +561,6 @@ async function submitPrompt() {
 
   if (mode.type === 'edit') {
     const artifact = artifacts.value.find((item) => item.id === mode.artifactId);
-
     if (artifact) {
       const generated = fakeGenerateArtifact(value, artifact);
       artifact.kind = generated.kind;
@@ -597,15 +568,14 @@ async function submitPrompt() {
       artifact.prompt = value;
       artifact.content = generated.content;
       selectedArtifactId.value = artifact.id;
-      inspectedArtifactId.value = inspectedArtifactId.value === artifact.id ? artifact.id : inspectedArtifactId.value;
     }
   } else {
     const artifact = createArtifactFromPrompt(value, chooseArtifactPosition(dot.value));
     artifacts.value.push(artifact);
     selectedArtifactId.value = artifact.id;
-    activeActionArtifactId.value = null;
   }
 
+  activeActionArtifactId.value = null;
   isDotActive.value = false;
   isGenerating.value = false;
   resetPromptMode();
@@ -626,14 +596,12 @@ function startPromptArtifact(artifact: Artifact) {
 }
 
 function forkArtifact(artifact: Artifact) {
-  const fork: Artifact = {
-    ...cloneArtifact(artifact),
-    id: crypto.randomUUID(),
-    title: `Fork of ${artifact.title}`,
-    x: artifact.x + 48,
-    y: artifact.y + 48,
-    createdAt: formatTimestamp(),
-  };
+  const fork = cloneArtifact(artifact);
+  fork.id = crypto.randomUUID();
+  fork.title = `Fork of ${artifact.title}`;
+  fork.x = artifact.x + 48;
+  fork.y = artifact.y + 48;
+  fork.createdAt = nowLabel();
 
   artifacts.value.push(fork);
   selectedArtifactId.value = fork.id;
@@ -647,16 +615,20 @@ function materializeDeletedMarker(toast: DeletedToast) {
     title: toast.artifact.title,
     x: toast.x,
     y: toast.y,
-    createdAt: formatTimestamp(),
+    createdAt: nowLabel(),
   });
   deletedToasts.value = deletedToasts.value.filter((item) => item.id !== toast.id);
 }
 
 function deleteArtifact(artifact: Artifact) {
   const removed = cloneArtifact(artifact);
-  const toastId = crypto.randomUUID();
-  const x = artifact.x + artifact.width / 2;
-  const y = artifact.y + artifact.height / 2;
+  const toast: DeletedToast = {
+    id: crypto.randomUUID(),
+    artifact: removed,
+    x: artifact.x + artifact.width / 2,
+    y: artifact.y + artifact.height / 2,
+    timeoutId: 0,
+  };
 
   artifacts.value = artifacts.value.filter((item) => item.id !== artifact.id);
   selectedArtifactId.value = null;
@@ -665,14 +637,6 @@ function deleteArtifact(artifact: Artifact) {
   if (inspectedArtifactId.value === artifact.id) {
     inspectedArtifactId.value = null;
   }
-
-  const toast: DeletedToast = {
-    id: toastId,
-    artifact: removed,
-    x,
-    y,
-    timeoutId: 0,
-  };
 
   toast.timeoutId = window.setTimeout(() => materializeDeletedMarker(toast), DELETE_UNDO_MS);
   deletedToasts.value.push(toast);
@@ -709,12 +673,7 @@ function closeInspector() {
 function fitAll() {
   const items = [
     { x: dot.value.x - 16, y: dot.value.y - 16, width: 32, height: 32 },
-    ...artifacts.value.map((artifact) => ({
-      x: artifact.x,
-      y: artifact.y,
-      width: artifact.width,
-      height: artifact.height,
-    })),
+    ...artifacts.value.map((artifact) => ({ x: artifact.x, y: artifact.y, width: artifact.width, height: artifact.height })),
     ...deletedToasts.value.map((toast) => ({ x: toast.x - 80, y: toast.y - 20, width: 160, height: 40 })),
     ...deletedMarkers.value.map((marker) => ({ x: marker.x - 10, y: marker.y - 10, width: 20, height: 20 })),
   ];
@@ -723,7 +682,6 @@ function fitAll() {
   const minY = Math.min(...items.map((item) => item.y));
   const maxX = Math.max(...items.map((item) => item.x + item.width));
   const maxY = Math.max(...items.map((item) => item.y + item.height));
-
   const boundsWidth = Math.max(maxX - minX, 1);
   const boundsHeight = Math.max(maxY - minY, 1);
   const zoom = clamp(
@@ -748,20 +706,14 @@ function handleKeydown(event: KeyboardEvent) {
       closeInspector();
       return;
     }
-
     closePrompt();
     activeActionArtifactId.value = null;
   }
 
   if (isTyping) return;
 
-  if (event.key.toLowerCase() === 'f') {
-    fitAll();
-  }
-
-  if (event.key === '0') {
-    resetCamera();
-  }
+  if (event.key.toLowerCase() === 'f') fitAll();
+  if (event.key === '0') resetCamera();
 }
 
 onMounted(() => {
@@ -846,30 +798,13 @@ onUnmounted(() => {
           @pointerup.stop
           @click.stop
         >
-          <button
-            class="artifact-action-root"
-            type="button"
-            aria-label="Show artifact actions"
-            @click="toggleArtifactActions(artifact)"
-          >
+          <button class="artifact-action-root" type="button" aria-label="Show artifact actions" @click="toggleArtifactActions(artifact)">
             <span />
           </button>
-          <button
-            class="artifact-action artifact-action--inspect"
-            type="button"
-            data-label="inspect"
-            aria-label="Inspect artifact"
-            @click="inspectArtifact(artifact)"
-          >
+          <button class="artifact-action artifact-action--inspect" type="button" data-label="inspect" aria-label="Inspect artifact" @click="inspectArtifact(artifact)">
             i
           </button>
-          <button
-            class="artifact-action artifact-action--edit"
-            type="button"
-            data-label="prompt"
-            aria-label="Prompt this artifact"
-            @click="startPromptArtifact(artifact)"
-          >
+          <button class="artifact-action artifact-action--edit" type="button" data-label="prompt" aria-label="Prompt this artifact" @click="startPromptArtifact(artifact)">
             ✎
           </button>
           <button
@@ -882,22 +817,10 @@ onUnmounted(() => {
           >
             ↻
           </button>
-          <button
-            class="artifact-action artifact-action--fork"
-            type="button"
-            data-label="fork"
-            aria-label="Fork artifact"
-            @click="forkArtifact(artifact)"
-          >
+          <button class="artifact-action artifact-action--fork" type="button" data-label="fork" aria-label="Fork artifact" @click="forkArtifact(artifact)">
             ⟡
           </button>
-          <button
-            class="artifact-action artifact-action--delete"
-            type="button"
-            data-label="delete"
-            aria-label="Delete artifact"
-            @click="deleteArtifact(artifact)"
-          >
+          <button class="artifact-action artifact-action--delete" type="button" data-label="delete" aria-label="Delete artifact" @click="deleteArtifact(artifact)">
             ×
           </button>
         </div>
@@ -970,13 +893,7 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <button
-      v-if="deletedMarkers.length"
-      class="marker-control"
-      type="button"
-      @pointerdown.stop
-      @click="clearDeletedMarkers"
-    >
+    <button v-if="deletedMarkers.length" class="marker-control" type="button" @pointerdown.stop @click="clearDeletedMarkers">
       clear deleted dots
     </button>
 
@@ -1014,22 +931,12 @@ onUnmounted(() => {
       </button>
     </aside>
 
-    <form
-      class="command-bar"
-      :class="{ 'command-bar--visible': isDotActive || isGenerating }"
-      @submit.prevent="submitPrompt"
-    >
+    <form class="command-bar" :class="{ 'command-bar--visible': isDotActive || isGenerating }" @submit.prevent="submitPrompt">
       <div class="command-bar__status">
         <span class="command-bar__dot" />
         <span>{{ isGenerating ? 'shaping...' : promptMode.type === 'edit' ? 'artifact is listening' : 'origin is listening' }}</span>
       </div>
-      <input
-        ref="promptInput"
-        v-model="prompt"
-        :disabled="isGenerating"
-        :placeholder="promptPlaceholder"
-        autocomplete="off"
-      />
+      <input ref="promptInput" v-model="prompt" :disabled="isGenerating" :placeholder="promptPlaceholder" autocomplete="off" />
       <button
         v-if="promptMode.type === 'edit'"
         class="command-bar__regenerate"

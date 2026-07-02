@@ -18,6 +18,79 @@
     0 0 34px rgba(255, 123, 114, 0.3);
 }
 
+.object-preview {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 14% 20%, rgba(142, 255, 135, 0.11), transparent 38%),
+    radial-gradient(circle at 86% 80%, rgba(255, 188, 117, 0.12), transparent 42%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.object-preview__header {
+  display: grid;
+  gap: 6px;
+}
+
+.object-preview__header span,
+.object-preview__grid small {
+  color: rgba(255, 188, 117, 0.74);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.object-preview__header strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(255, 250, 240, 0.9);
+  font-size: 0.94rem;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.object-preview__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.object-preview__chips span {
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: rgba(243, 239, 230, 0.7);
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.object-preview__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.object-preview__grid div {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  min-width: 0;
+}
+
+.object-preview__grid div > span {
+  overflow: hidden;
+  color: rgba(243, 239, 230, 0.62);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .deleted-toast {
   position: absolute;
   z-index: 18;
@@ -224,5 +297,9 @@
   .marker-control {
     bottom: max(18px, env(safe-area-inset-bottom));
     left: 56px;
+  }
+
+  .object-preview__grid {
+    grid-template-columns: 1fr;
   }
 }

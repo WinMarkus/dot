@@ -1,14 +1,28 @@
 .artifact-action-system {
-  top: -42px;
-  width: 170px;
-  height: 146px;
+  top: -48px;
+  width: 190px;
+  height: 160px;
+}
+
+.artifact-action--regenerate {
+  top: 46px;
+  right: 130px;
+  background: #fff3c7;
+  transition-delay: 310ms;
+}
+
+.artifact-action--regenerate:hover,
+.artifact-action--regenerate:focus-visible {
+  box-shadow:
+    0 0 14px rgba(255, 243, 199, 0.85),
+    0 0 34px rgba(255, 188, 117, 0.3);
 }
 
 .artifact-action--delete {
-  top: 104px;
-  right: 64px;
+  top: 110px;
+  right: 66px;
   background: #ff7b72;
-  transition-delay: 430ms;
+  transition-delay: 520ms;
 }
 
 .artifact-action--delete:hover,
@@ -16,6 +30,36 @@
   box-shadow:
     0 0 14px rgba(255, 123, 114, 0.85),
     0 0 34px rgba(255, 123, 114, 0.3);
+}
+
+.artifact-card--regenerating {
+  pointer-events: none;
+}
+
+.artifact-card--regenerating::after {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  color: rgba(255, 243, 199, 0.88);
+  background: rgba(19, 19, 16, 0.42);
+  content: "regenerating";
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  backdrop-filter: blur(4px);
+}
+
+.command-bar__regenerate {
+  color: rgba(255, 250, 240, 0.82) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.command-bar__regenerate:hover,
+.command-bar__regenerate:focus-visible {
+  background: rgba(255, 255, 255, 0.13) !important;
 }
 
 .object-preview {
@@ -301,5 +345,14 @@
 
   .object-preview__grid {
     grid-template-columns: 1fr;
+  }
+
+  .command-bar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .command-bar__regenerate {
+    grid-column: 1 / -1;
+    justify-self: stretch;
   }
 }

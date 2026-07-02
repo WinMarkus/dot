@@ -18,10 +18,12 @@ A minimal generative creation canvas prototype.
 - selected artifacts show a small action dot
 - hover or focus the action dot on desktop to bloom action sub-dots
 - tap the action dot on touch devices to toggle action sub-dots
-- action sub-dots currently support inspect, prompt, fork, and delete
+- action sub-dots currently support inspect, prompt, regenerate, fork, and delete
+- regenerate reruns the artifact from its existing prompt while keeping its position
 - inspect opens a lightweight artifact inspector
 - on mobile the inspector behaves as a bottom sheet
 - prompt reopens the bottom prompt bar in artifact-editing mode
+- edit mode also exposes regenerate if the current result is not useful
 - fork duplicates the artifact nearby
 - delete removes the artifact and leaves a spatial undo bubble where the artifact lived
 - if undo expires, a small red deleted marker remains on the canvas

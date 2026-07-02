@@ -1,0 +1,6 @@
+@media (max-width: 760px) {
+  .command-bar {
+    top: 14px;
+    bottom: initial;
+  }
+}

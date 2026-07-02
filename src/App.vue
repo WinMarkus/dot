@@ -120,8 +120,19 @@ const promptPlaceholder = computed(() =>
 );
 
 const promptActionLabel = computed(() => {
-  if (isGenerating.value) return promptMode.value.type === 'edit' ? 'changing' : 'creating';
-  return promptMode.value.type === 'edit' ? 'change' : 'create';
+  if (promptMode.value.type === 'edit') {
+    if (regeneratingArtifactId.value) return 'regenerating';
+    if (isGenerating.value) return 'changing';
+    return prompt.value.trim() ? 'change' : 'regenerate';
+  }
+
+  return isGenerating.value ? 'creating' : 'create';
+});
+
+const isPromptSubmitDisabled = computed(() => {
+  if (isGenerating.value || regeneratingArtifactId.value) return true;
+  if (promptMode.value.type === 'create') return !prompt.value.trim();
+  return false;
 });
 
 const inspectedArtifact = computed(() =>
@@ -370,7 +381,7 @@ function createArtifactFromPrompt(value: string, position: Point): Artifact {
 }
 
 function activatePrompt() {
-  if (isGenerating.value) return;
+  if (isGenerating.value || regeneratingArtifactId.value) return;
   isDotActive.value = true;
   nextTick(() => promptInput.value?.focus());
 }
@@ -515,7 +526,7 @@ function handleWheel(event: WheelEvent) {
 }
 
 function closePrompt() {
-  if (isGenerating.value) return;
+  if (isGenerating.value || regeneratingArtifactId.value) return;
   isDotActive.value = false;
   resetPromptMode();
 }
@@ -540,21 +551,23 @@ async function regenerateArtifact(artifact: Artifact) {
   regeneratingArtifactId.value = null;
 }
 
-function regenerateCurrentEditArtifact() {
-  const mode = promptMode.value;
-  if (mode.type !== 'edit') return;
-
-  const artifact = artifacts.value.find((item) => item.id === mode.artifactId);
-  if (artifact) {
-    regenerateArtifact(artifact);
-  }
-}
-
 async function submitPrompt() {
   const value = prompt.value.trim();
-  if (!value || isGenerating.value) return;
-
   const mode = promptMode.value;
+
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+  if (mode.type === 'create' && !value) return;
+
+  if (mode.type === 'edit' && !value) {
+    const artifact = artifacts.value.find((item) => item.id === mode.artifactId);
+    if (!artifact) return;
+
+    await regenerateArtifact(artifact);
+    isDotActive.value = false;
+    resetPromptMode();
+    return;
+  }
+
   isGenerating.value = true;
 
   await new Promise((resolve) => window.setTimeout(resolve, 850));
@@ -807,16 +820,6 @@ onUnmounted(() => {
           <button class="artifact-action artifact-action--edit" type="button" data-label="prompt" aria-label="Prompt this artifact" @click="startPromptArtifact(artifact)">
             ✎
           </button>
-          <button
-            class="artifact-action artifact-action--regenerate"
-            type="button"
-            data-label="regenerate"
-            aria-label="Regenerate artifact"
-            :disabled="Boolean(regeneratingArtifactId)"
-            @click="regenerateArtifact(artifact)"
-          >
-            ↻
-          </button>
           <button class="artifact-action artifact-action--fork" type="button" data-label="fork" aria-label="Fork artifact" @click="forkArtifact(artifact)">
             ⟡
           </button>
@@ -937,16 +940,7 @@ onUnmounted(() => {
         <span>{{ isGenerating ? 'shaping...' : promptMode.type === 'edit' ? 'artifact is listening' : 'origin is listening' }}</span>
       </div>
       <input ref="promptInput" v-model="prompt" :disabled="isGenerating" :placeholder="promptPlaceholder" autocomplete="off" />
-      <button
-        v-if="promptMode.type === 'edit'"
-        class="command-bar__regenerate"
-        type="button"
-        :disabled="Boolean(regeneratingArtifactId)"
-        @click="regenerateCurrentEditArtifact"
-      >
-        regenerate
-      </button>
-      <button type="submit" :disabled="!prompt.trim() || isGenerating">
+      <button type="submit" :disabled="isPromptSubmitDisabled">
         {{ promptActionLabel }}
       </button>
     </form>

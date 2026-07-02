@@ -42,14 +42,6 @@ type GeneratedArtifact = {
   content: ArtifactContent;
 };
 
-type DeletedToast = {
-  id: string;
-  artifact: Artifact;
-  x: number;
-  y: number;
-  timeoutId: number;
-};
-
 type DeletedMarker = {
   id: string;
   artifact: Artifact;
@@ -78,7 +70,7 @@ const ARTIFACT_WIDTH = 320;
 const ARTIFACT_HEIGHT = 230;
 const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 2.4;
-const DELETE_UNDO_MS = 5000;
+const DELETE_TRANSITION_MS = 560;
 
 const dot = ref<Point>({ x: 0, y: 0 });
 const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
@@ -90,8 +82,9 @@ const promptMode = ref<PromptMode>({ type: 'create' });
 const promptInput = ref<HTMLInputElement | null>(null);
 
 const artifacts = ref<Artifact[]>([]);
-const deletedToasts = ref<DeletedToast[]>([]);
+const deletingArtifactIds = ref<string[]>([]);
 const deletedMarkers = ref<DeletedMarker[]>([]);
+const deletionTimers = new Map<string, number>();
 
 const selectedArtifactId = ref<string | null>(null);
 const activeActionArtifactId = ref<string | null>(null);
@@ -436,6 +429,8 @@ function handleDotPointerUp(event: PointerEvent) {
 }
 
 function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
+  if (deletingArtifactIds.value.includes(artifact.id)) return;
+
   event.stopPropagation();
   selectedArtifactId.value = artifact.id;
 
@@ -465,7 +460,7 @@ function handleArtifactPointerMove(event: PointerEvent) {
   }
 
   const artifact = artifacts.value.find((item) => item.id === state.artifactId);
-  if (!artifact) return;
+  if (!artifact || deletingArtifactIds.value.includes(artifact.id)) return;
 
   artifact.x = state.startX + dx;
   artifact.y = state.startY + dy;
@@ -480,7 +475,7 @@ function handleArtifactPointerUp(event: PointerEvent) {
 }
 
 function handleWorkspacePointerDown(event: PointerEvent) {
-  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel, .deleted-toast, .deleted-marker, .marker-control')) return;
+  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel, .deleted-marker, .marker-control')) return;
 
   selectedArtifactId.value = null;
   activeActionArtifactId.value = null;
@@ -532,7 +527,7 @@ function closePrompt() {
 }
 
 async function regenerateArtifact(artifact: Artifact) {
-  if (regeneratingArtifactId.value) return;
+  if (regeneratingArtifactId.value || deletingArtifactIds.value.includes(artifact.id)) return;
 
   regeneratingArtifactId.value = artifact.id;
   activeActionArtifactId.value = null;
@@ -595,12 +590,16 @@ async function submitPrompt() {
 }
 
 function inspectArtifact(artifact: Artifact) {
+  if (deletingArtifactIds.value.includes(artifact.id)) return;
+
   inspectedArtifactId.value = artifact.id;
   selectedArtifactId.value = artifact.id;
   activeActionArtifactId.value = null;
 }
 
 function startPromptArtifact(artifact: Artifact) {
+  if (deletingArtifactIds.value.includes(artifact.id)) return;
+
   promptMode.value = { type: 'edit', artifactId: artifact.id };
   prompt.value = '';
   selectedArtifactId.value = artifact.id;
@@ -609,6 +608,8 @@ function startPromptArtifact(artifact: Artifact) {
 }
 
 function forkArtifact(artifact: Artifact) {
+  if (deletingArtifactIds.value.includes(artifact.id)) return;
+
   const fork = cloneArtifact(artifact);
   fork.id = crypto.randomUUID();
   fork.title = `Fork of ${artifact.title}`;
@@ -621,45 +622,37 @@ function forkArtifact(artifact: Artifact) {
   activeActionArtifactId.value = null;
 }
 
-function materializeDeletedMarker(toast: DeletedToast) {
+function completeDeleteTransition(artifact: Artifact) {
+  const removed = cloneArtifact(artifact);
+
+  artifacts.value = artifacts.value.filter((item) => item.id !== artifact.id);
+  deletingArtifactIds.value = deletingArtifactIds.value.filter((id) => id !== artifact.id);
+  deletionTimers.delete(artifact.id);
+
   deletedMarkers.value.push({
     id: crypto.randomUUID(),
-    artifact: cloneArtifact(toast.artifact),
-    title: toast.artifact.title,
-    x: toast.x,
-    y: toast.y,
+    artifact: removed,
+    title: removed.title,
+    x: removed.x + removed.width / 2,
+    y: removed.y + removed.height / 2,
     createdAt: nowLabel(),
   });
-  deletedToasts.value = deletedToasts.value.filter((item) => item.id !== toast.id);
 }
 
 function deleteArtifact(artifact: Artifact) {
-  const removed = cloneArtifact(artifact);
-  const toast: DeletedToast = {
-    id: crypto.randomUUID(),
-    artifact: removed,
-    x: artifact.x + artifact.width / 2,
-    y: artifact.y + artifact.height / 2,
-    timeoutId: 0,
-  };
+  if (deletingArtifactIds.value.includes(artifact.id)) return;
 
-  artifacts.value = artifacts.value.filter((item) => item.id !== artifact.id);
+  deletingArtifactIds.value.push(artifact.id);
   selectedArtifactId.value = null;
   activeActionArtifactId.value = null;
+  artifactDragState.value = null;
 
   if (inspectedArtifactId.value === artifact.id) {
     inspectedArtifactId.value = null;
   }
 
-  toast.timeoutId = window.setTimeout(() => materializeDeletedMarker(toast), DELETE_UNDO_MS);
-  deletedToasts.value.push(toast);
-}
-
-function undoDelete(toast: DeletedToast) {
-  window.clearTimeout(toast.timeoutId);
-  artifacts.value.push(toast.artifact);
-  deletedToasts.value = deletedToasts.value.filter((item) => item.id !== toast.id);
-  selectedArtifactId.value = toast.artifact.id;
+  const timerId = window.setTimeout(() => completeDeleteTransition(artifact), DELETE_TRANSITION_MS);
+  deletionTimers.set(artifact.id, timerId);
 }
 
 function revitalizeDeletedMarker(marker: DeletedMarker) {
@@ -675,6 +668,8 @@ function clearDeletedMarkers() {
 }
 
 function toggleArtifactActions(artifact: Artifact) {
+  if (deletingArtifactIds.value.includes(artifact.id)) return;
+
   selectedArtifactId.value = artifact.id;
   activeActionArtifactId.value = activeActionArtifactId.value === artifact.id ? null : artifact.id;
 }
@@ -687,7 +682,6 @@ function fitAll() {
   const items = [
     { x: dot.value.x - 16, y: dot.value.y - 16, width: 32, height: 32 },
     ...artifacts.value.map((artifact) => ({ x: artifact.x, y: artifact.y, width: artifact.width, height: artifact.height })),
-    ...deletedToasts.value.map((toast) => ({ x: toast.x - 80, y: toast.y - 20, width: 160, height: 40 })),
     ...deletedMarkers.value.map((marker) => ({ x: marker.x - 10, y: marker.y - 10, width: 20, height: 20 })),
   ];
 
@@ -736,7 +730,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
-  deletedToasts.value.forEach((toast) => window.clearTimeout(toast.timeoutId));
+  deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
 });
 </script>
 
@@ -769,17 +763,6 @@ onUnmounted(() => {
         <span>revitalise</span>
       </button>
 
-      <div
-        v-for="toast in deletedToasts"
-        :key="toast.id"
-        class="deleted-toast"
-        :style="{ left: `${toast.x}px`, top: `${toast.y}px` }"
-        @pointerdown.stop
-      >
-        <span>deleted</span>
-        <button type="button" @click="undoDelete(toast)">undo</button>
-      </div>
-
       <section
         v-for="artifact in artifacts"
         :key="artifact.id"
@@ -788,6 +771,7 @@ onUnmounted(() => {
           'artifact-card--dragging': artifactDragState?.artifactId === artifact.id,
           'artifact-card--selected': selectedArtifactId === artifact.id,
           'artifact-card--regenerating': regeneratingArtifactId === artifact.id,
+          'artifact-card--deleting': deletingArtifactIds.includes(artifact.id),
         }"
         :style="{
           left: `${artifact.x}px`,
@@ -802,7 +786,7 @@ onUnmounted(() => {
         @pointerup="handleArtifactPointerUp"
       >
         <div
-          v-if="selectedArtifactId === artifact.id"
+          v-if="selectedArtifactId === artifact.id && !deletingArtifactIds.includes(artifact.id)"
           class="artifact-action-system"
           :class="{ 'artifact-action-system--open': activeActionArtifactId === artifact.id }"
           aria-label="Artifact actions"

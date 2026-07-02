@@ -7,5 +7,6 @@ import './mobile-prompt-safe.css';
 import './delete-transition.css';
 import './seed-dot-motion.css';
 import './bubble-shape.css';
+import './closed-open-bubbles.css';
 
 createApp(App).mount('#app');

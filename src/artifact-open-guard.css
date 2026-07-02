@@ -1,0 +1,59 @@
+.artifact-card--selected.artifact-card--open-suppressed {
+  display: grid;
+  place-items: center;
+  width: 148px !important;
+  height: 148px;
+  min-height: 148px !important;
+  padding: 18px;
+  border-radius: 999px;
+  overflow: hidden;
+  text-align: center;
+  transform: scale(1);
+}
+
+.artifact-card--selected.artifact-card--open-suppressed .artifact-action-system,
+.artifact-card--selected.artifact-card--open-suppressed .artifact-content,
+.artifact-card--selected.artifact-card--open-suppressed .artifact-card__eyebrow {
+  display: none;
+}
+
+.artifact-card--selected.artifact-card--open-suppressed::after {
+  position: absolute;
+  inset: 14px;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 250, 240, 0.14), transparent 26%),
+    radial-gradient(circle at 68% 74%, rgba(142, 255, 135, 0.09), transparent 42%);
+  content: "";
+  pointer-events: none;
+}
+
+.artifact-card--selected.artifact-card--open-suppressed h2 {
+  position: relative;
+  z-index: 1;
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 104px;
+  margin: 0;
+  color: rgba(255, 250, 240, 0.92);
+  font-size: 0.98rem;
+  line-height: 1.05;
+  text-align: center;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+@media (max-width: 760px) {
+  .artifact-card--selected.artifact-card--open-suppressed {
+    width: 132px !important;
+    height: 132px;
+    min-height: 132px !important;
+  }
+
+  .artifact-card--selected.artifact-card--open-suppressed h2 {
+    max-width: 92px;
+    font-size: 0.88rem;
+  }
+}

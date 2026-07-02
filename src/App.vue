@@ -97,6 +97,7 @@ const panState = ref<DragState | null>(null);
 const dotClass = computed(() => ({
   'seed-dot--active': isDotActive.value,
   'seed-dot--generating': isGenerating.value,
+  'seed-dot--dragging': Boolean(dotDragState.value),
 }));
 
 const worldTransform = computed(() => ({
@@ -384,6 +385,17 @@ function resetPromptMode() {
   prompt.value = '';
 }
 
+function closeTransientUi() {
+  selectedArtifactId.value = null;
+  activeActionArtifactId.value = null;
+  inspectedArtifactId.value = null;
+
+  if (!isGenerating.value && !regeneratingArtifactId.value) {
+    isDotActive.value = false;
+    resetPromptMode();
+  }
+}
+
 function handleDotPointerDown(event: PointerEvent) {
   if (isGenerating.value) return;
   event.stopPropagation();
@@ -477,8 +489,7 @@ function handleArtifactPointerUp(event: PointerEvent) {
 function handleWorkspacePointerDown(event: PointerEvent) {
   if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel, .deleted-marker, .marker-control')) return;
 
-  selectedArtifactId.value = null;
-  activeActionArtifactId.value = null;
+  closeTransientUi();
 
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
@@ -513,6 +524,10 @@ function handleWorkspacePointerUp(event: PointerEvent) {
 
   (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
   panState.value = null;
+
+  if (!state.moved) {
+    dot.value = screenToWorld({ x: state.startPointerX, y: state.startPointerY });
+  }
 }
 
 function handleWheel(event: WheelEvent) {

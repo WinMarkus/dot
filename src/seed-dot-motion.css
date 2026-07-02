@@ -1,7 +1,7 @@
 .seed-dot {
   transition:
-    left 420ms cubic-bezier(0.16, 1, 0.3, 1),
-    top 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    left 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    top 620ms cubic-bezier(0.16, 1, 0.3, 1),
     transform 180ms ease;
 }
 

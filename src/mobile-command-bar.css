@@ -1,0 +1,45 @@
+@media (max-width: 760px) {
+  .command-bar {
+    gap: 10px;
+    width: min(620px, calc(100vw - 24px));
+    padding: 12px;
+    border-radius: 26px;
+  }
+
+  .command-bar--visible:focus-within {
+    top: max(14px, env(safe-area-inset-top));
+    bottom: auto;
+    max-height: calc(100dvh - 28px - env(safe-area-inset-top));
+    overflow: auto;
+  }
+
+  .command-bar input {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 2px 4px 8px;
+  }
+
+  .command-bar button {
+    min-width: 0;
+    width: 100%;
+    padding: 12px 14px;
+  }
+
+  .command-bar__regenerate {
+    grid-column: 1;
+    justify-self: stretch;
+  }
+
+  .command-bar > button:last-child {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .command-bar:has(.command-bar__regenerate) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .command-bar:has(.command-bar__regenerate) > button:last-child {
+    grid-column: 2;
+  }
+}

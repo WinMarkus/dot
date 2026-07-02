@@ -1,0 +1,132 @@
+.artifact-card {
+  border-radius: 46px;
+  padding: 18px;
+  transform-origin: center center;
+  transform: scale(0.84);
+}
+
+.artifact-card--dragging {
+  transform: scale(0.86);
+}
+
+.artifact-card--deleting {
+  transform-origin: center center;
+}
+
+.artifact-card__eyebrow {
+  margin-bottom: 9px;
+  font-size: 0.66rem;
+}
+
+.artifact-card h2 {
+  margin-bottom: 10px;
+  font-size: 1.08rem;
+  line-height: 1.06;
+}
+
+.artifact-content {
+  font-size: 0.82rem;
+  line-height: 1.34;
+}
+
+.artifact-content--text p,
+.artifact-content--unknown p {
+  -webkit-line-clamp: 3;
+}
+
+.object-preview {
+  gap: 8px;
+  padding: 12px;
+  border-radius: 30px;
+}
+
+.object-preview__header {
+  gap: 4px;
+}
+
+.object-preview__header strong {
+  font-size: 0.82rem;
+  -webkit-line-clamp: 2;
+}
+
+.object-preview__chips {
+  gap: 5px;
+}
+
+.object-preview__chips span {
+  padding: 4px 7px;
+  font-size: 0.6rem;
+}
+
+.object-preview__grid {
+  gap: 8px;
+}
+
+.object-preview__grid small {
+  font-size: 0.58rem;
+}
+
+.object-preview__grid div > span {
+  font-size: 0.64rem;
+}
+
+.image-preview,
+.video-preview {
+  min-height: 92px;
+  border-radius: 32px;
+}
+
+.component-preview {
+  border-radius: 30px;
+}
+
+.artifact-action-system {
+  top: -80px;
+  right: -58px;
+  width: 218px;
+  height: 184px;
+}
+
+.artifact-action-root {
+  top: 70px;
+  right: 84px;
+}
+
+.artifact-action--inspect {
+  top: 4px;
+  right: 80px;
+  transition-delay: 70ms;
+}
+
+.artifact-action--edit {
+  top: 46px;
+  right: 146px;
+  transition-delay: 150ms;
+}
+
+.artifact-action--fork {
+  top: 118px;
+  right: 132px;
+  transition-delay: 230ms;
+}
+
+.artifact-action--delete {
+  top: 136px;
+  right: 48px;
+  transition-delay: 310ms;
+}
+
+@media (max-width: 760px) {
+  .artifact-card {
+    transform: scale(0.78);
+  }
+
+  .artifact-card--dragging {
+    transform: scale(0.8);
+  }
+
+  .artifact-action-system {
+    top: -86px;
+    right: -60px;
+  }
+}

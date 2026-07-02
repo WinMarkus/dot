@@ -1,3 +1,9 @@
+.artifact-action-system {
+  top: -40px;
+  width: 150px;
+  height: 126px;
+}
+
 @media (max-width: 760px) {
   .command-bar {
     grid-template-columns: minmax(0, 1fr) auto;

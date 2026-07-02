@@ -6,5 +6,6 @@ import './mobile-command-bar.css';
 import './mobile-prompt-safe.css';
 import './delete-transition.css';
 import './seed-dot-motion.css';
+import './bubble-shape.css';
 
 createApp(App).mount('#app');

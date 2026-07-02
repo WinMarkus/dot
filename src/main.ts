@@ -8,5 +8,7 @@ import './delete-transition.css';
 import './seed-dot-motion.css';
 import './bubble-shape.css';
 import './closed-open-bubbles.css';
+import './artifact-open-guard.css';
+import './artifact-open-guard';
 
 createApp(App).mount('#app');

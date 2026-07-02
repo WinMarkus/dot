@@ -1,0 +1,10 @@
+.seed-dot {
+  transition:
+    left 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    top 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 180ms ease;
+}
+
+.seed-dot--dragging {
+  transition: none;
+}

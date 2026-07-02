@@ -25,8 +25,7 @@ A minimal generative creation canvas prototype.
 - in edit mode, submitting an empty prompt regenerates the artifact from its existing prompt
 - in edit mode, typing an instruction changes the artifact
 - fork duplicates the artifact nearby
-- delete removes the artifact and leaves a spatial undo bubble where the artifact lived
-- if undo expires, a small red deleted marker remains on the canvas
+- delete smoothly collapses the artifact into a small red deleted marker
 - tapping a deleted marker revitalises the artifact at its original position
 - deleted markers can be cleared with the clear deleted dots control
 - canvas controls live behind the bottom-left help dot

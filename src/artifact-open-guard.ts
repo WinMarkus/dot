@@ -1,5 +1,5 @@
 const DRAG_THRESHOLD_PX = 6;
-const OPEN_DELAY_MS = 180;
+const OPEN_DELAY_MS = 220;
 
 type PendingArtifactPointer = {
   element: HTMLElement;
@@ -30,7 +30,15 @@ function isInsideArtifactAction(target: EventTarget | null) {
 }
 
 function isVisuallyOpen(element: HTMLElement) {
-  return element.classList.contains('artifact-card--selected') && !element.classList.contains('artifact-card--open-suppressed');
+  return element.classList.contains('artifact-card--selected') && element.dataset.openSuppressed !== 'true';
+}
+
+function suppressOpen(element: HTMLElement) {
+  element.dataset.openSuppressed = 'true';
+}
+
+function allowOpen(element: HTMLElement) {
+  delete element.dataset.openSuppressed;
 }
 
 document.addEventListener(
@@ -55,7 +63,7 @@ document.addEventListener(
     };
 
     if (!wasVisuallyOpen) {
-      element.classList.add('artifact-card--open-suppressed');
+      suppressOpen(element);
     }
   },
   true,
@@ -86,13 +94,13 @@ document.addEventListener(
     if (pointer.wasVisuallyOpen) return;
 
     if (pointer.moved) {
-      pointer.element.classList.add('artifact-card--open-suppressed');
+      suppressOpen(pointer.element);
       return;
     }
 
     clearPendingOpenTimer();
     pendingOpenTimer = window.setTimeout(() => {
-      pointer.element.classList.remove('artifact-card--open-suppressed');
+      allowOpen(pointer.element);
       pendingOpenTimer = null;
     }, OPEN_DELAY_MS);
   },
@@ -104,6 +112,7 @@ document.addEventListener(
   (event) => {
     if (!pendingPointer || pendingPointer.pointerId !== event.pointerId) return;
 
+    suppressOpen(pendingPointer.element);
     pendingPointer = null;
   },
   true,

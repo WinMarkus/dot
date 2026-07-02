@@ -6,17 +6,23 @@ type Point = {
   y: number;
 };
 
-type ArtifactKind = 'text' | 'component' | 'image' | 'video' | 'unknown';
+type ArtifactKind = 'text' | 'object' | 'image' | 'video' | 'unknown';
+
+type ArtifactFacet = {
+  label: string;
+  value: string;
+};
 
 type ArtifactContent = {
   raw: string;
   markdown?: string;
   description?: string;
-  componentName?: string;
-  previewTitle?: string;
+  tags?: string[];
+  capabilities?: string[];
+  connections?: string[];
+  facets?: ArtifactFacet[];
   alt?: string;
   storyboard?: string[];
-  actions?: string[];
   summary?: string;
 };
 
@@ -225,15 +231,62 @@ function cloneArtifact(artifact: Artifact): Artifact {
   return JSON.parse(JSON.stringify(artifact)) as Artifact;
 }
 
+function uniq(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function inferObjectTags(value: string) {
+  const text = value.toLowerCase();
+  const tags = ['semantic object'];
+
+  if (/\b(list|item|collection|inventory)\b/.test(text)) tags.push('list');
+  if (/\b(game|card|condition|rule|turn|score|player|level)\b/.test(text)) tags.push('game logic');
+  if (/\b(plan|schedule|week|calendar|reminder|routine)\b/.test(text)) tags.push('plan');
+  if (/\b(button|form|screen|page|ui|component|dashboard|modal|widget|vue|react)\b/.test(text)) tags.push('interface');
+  if (/\b(data|table|csv|transform|calculate|number)\b/.test(text)) tags.push('data');
+
+  return uniq(tags).slice(0, 4);
+}
+
+function inferConnections(value: string) {
+  const text = value.toLowerCase();
+  const connections = ['source', 'constraint', 'result'];
+
+  if (/\b(list|item|collection|inventory)\b/.test(text)) connections.push('item', 'quantity', 'place');
+  if (/\b(game|card|condition|rule)\b/.test(text)) connections.push('trigger', 'state', 'target');
+  if (/\b(plan|schedule|week|calendar)\b/.test(text)) connections.push('date', 'task', 'dependency');
+  if (/\b(button|form|screen|page|ui|component)\b/.test(text)) connections.push('input', 'event', 'view');
+
+  return uniq(connections).slice(0, 6);
+}
+
 function detectArtifactKind(value: string, fallback: ArtifactKind = 'unknown'): ArtifactKind {
   const text = value.toLowerCase();
 
   if (/\b(image|picture|photo|illustration|logo|icon|poster|visual|wallpaper)\b/.test(text)) return 'image';
-  if (/\b(video|movie|clip|animation|trailer|reel)\b/.test(text)) return 'video';
-  if (/\b(component|button|card|form|login|dashboard|widget|ui|vue|react|page|modal)\b/.test(text)) return 'component';
+  if (/\b(video|movie|clip|animation|trailer)\b/.test(text)) return 'video';
   if (/\b(text|copy|poem|story|essay|markdown|explain|write|article|headline)\b/.test(text)) return 'text';
+  if (/\b(component|button|card|form|login|dashboard|widget|ui|vue|react|page|modal|plan|schedule|list|game|condition|rule|data|table|routine)\b/.test(text)) return 'object';
 
   return fallback;
+}
+
+function createObjectArtifactContent(value: string): ArtifactContent {
+  const tags = inferObjectTags(value);
+  const connections = inferConnections(value);
+
+  return {
+    raw: value,
+    description: value,
+    tags,
+    connections,
+    capabilities: ['accepts detail', 'can connect', 'can transform'],
+    facets: [
+      { label: 'role', value: 'semantic object' },
+      { label: 'state', value: 'draft' },
+    ],
+    summary: 'Universal artifact shell. Meaning, capabilities, and connections are model-defined.',
+  };
 }
 
 function fakeGenerateArtifact(value: string, previous?: Artifact): GeneratedArtifact {
@@ -251,22 +304,19 @@ function fakeGenerateArtifact(value: string, previous?: Artifact): GeneratedArti
       content: {
         raw: markdown,
         markdown,
+        tags: ['text'],
+        connections: ['source', 'reference', 'output'],
+        capabilities: ['summarise', 'rewrite', 'connect'],
         summary: 'Text artifact with markdown preview.',
       },
     };
   }
 
-  if (kind === 'component') {
+  if (kind === 'object') {
     return {
       kind,
       title,
-      content: {
-        raw: `<${title.replace(/[^a-z0-9]/gi, '') || 'GeneratedComponent'} />`,
-        componentName: `${title.replace(/[^a-z0-9]/gi, '') || 'Generated'}Component`,
-        previewTitle: title,
-        actions: ['primary action', 'secondary action'],
-        summary: 'Component artifact rendered as a safe preview, not executable code.',
-      },
+      content: createObjectArtifactContent(value),
     };
   }
 
@@ -278,6 +328,9 @@ function fakeGenerateArtifact(value: string, previous?: Artifact): GeneratedArti
         raw: `Image prompt: ${value}`,
         description: value,
         alt: `Generated image placeholder for: ${value}`,
+        tags: ['visual'],
+        connections: ['reference', 'style', 'output'],
+        capabilities: ['describe', 'vary', 'connect'],
         summary: 'Image artifact placeholder.',
       },
     };
@@ -290,6 +343,9 @@ function fakeGenerateArtifact(value: string, previous?: Artifact): GeneratedArti
       content: {
         raw: `Video prompt: ${value}`,
         description: value,
+        tags: ['motion'],
+        connections: ['scene', 'timing', 'audio', 'output'],
+        capabilities: ['storyboard', 'vary', 'connect'],
         storyboard: ['Opening frame', 'Main motion', 'End frame'],
         summary: 'Video artifact placeholder with storyboard beats.',
       },
@@ -301,6 +357,9 @@ function fakeGenerateArtifact(value: string, previous?: Artifact): GeneratedArti
     title,
     content: {
       raw: value,
+      tags: ['unclassified'],
+      connections: ['source', 'meaning', 'output'],
+      capabilities: ['classify', 'transform', 'connect'],
       summary: 'Unknown artifact type. This will later be resolved by the model router.',
     },
   };
@@ -810,12 +869,24 @@ onUnmounted(() => {
             <p>{{ artifact.content.markdown }}</p>
           </template>
 
-          <template v-else-if="artifact.kind === 'component'">
-            <div class="component-preview">
-              <span class="component-preview__label">{{ artifact.content.componentName }}</span>
-              <strong>{{ artifact.content.previewTitle }}</strong>
-              <div class="component-preview__actions">
-                <span v-for="action in artifact.content.actions ?? []" :key="action">{{ action }}</span>
+          <template v-else-if="artifact.kind === 'object'">
+            <div class="object-preview">
+              <div class="object-preview__header">
+                <span>universal object</span>
+                <strong>{{ artifact.content.description }}</strong>
+              </div>
+              <div class="object-preview__chips">
+                <span v-for="tag in artifact.content.tags ?? []" :key="tag">{{ tag }}</span>
+              </div>
+              <div class="object-preview__grid">
+                <div>
+                  <small>capabilities</small>
+                  <span v-for="capability in artifact.content.capabilities ?? []" :key="capability">{{ capability }}</span>
+                </div>
+                <div>
+                  <small>connections</small>
+                  <span v-for="connection in artifact.content.connections ?? []" :key="connection">{{ connection }}</span>
+                </div>
               </div>
             </div>
           </template>

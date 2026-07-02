@@ -9,7 +9,9 @@ A minimal generative creation canvas prototype.
 - click the dot to open the prompt bar
 - active dot turns warm orange
 - submit a prompt to create a typed artifact near the dot
-- current fake generator detects text, component, image, video, or unknown artifacts
+- current fake generator detects text, object, image, video, or unknown artifacts
+- object artifacts use a universal shell with tags, capabilities, and possible connections
+- the shell avoids domain-specific UI assumptions; meaning should come from the model
 - generated artifacts materialize onto the canvas
 - generated artifacts are draggable
 - newly created artifacts are selected automatically

@@ -91,6 +91,7 @@ const dot = ref<Point>({ x: 0, y: 0 });
 const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
 const isDotActive = ref(false);
 const isGenerating = ref(false);
+const regeneratingArtifactId = ref<string | null>(null);
 const prompt = ref('');
 const promptMode = ref<PromptMode>({ type: 'create' });
 const artifacts = ref<Artifact[]>([]);
@@ -548,6 +549,35 @@ function closePrompt() {
   resetPromptMode();
 }
 
+async function regenerateArtifact(artifact: Artifact) {
+  if (regeneratingArtifactId.value) return;
+
+  regeneratingArtifactId.value = artifact.id;
+  activeActionArtifactId.value = null;
+
+  await new Promise((resolve) => window.setTimeout(resolve, 850));
+
+  const current = artifacts.value.find((item) => item.id === artifact.id);
+  if (current) {
+    const generated = fakeGenerateArtifact(current.prompt);
+    current.kind = generated.kind;
+    current.title = generated.title;
+    current.content = generated.content;
+    selectedArtifactId.value = current.id;
+  }
+
+  regeneratingArtifactId.value = null;
+}
+
+function regenerateCurrentEditArtifact() {
+  if (promptMode.value.type !== 'edit') return;
+
+  const artifact = artifacts.value.find((item) => item.id === promptMode.value.artifactId);
+  if (!artifact) return;
+
+  regenerateArtifact(artifact);
+}
+
 async function submitPrompt() {
   const value = prompt.value.trim();
   if (!value || isGenerating.value) return;
@@ -792,6 +822,7 @@ onUnmounted(() => {
         :class="{
           'artifact-card--dragging': artifactDragState?.artifactId === artifact.id,
           'artifact-card--selected': selectedArtifactId === artifact.id,
+          'artifact-card--regenerating': regeneratingArtifactId === artifact.id,
         }"
         :style="{
           left: `${artifact.x}px`,
@@ -842,6 +873,16 @@ onUnmounted(() => {
             ✎
           </button>
           <button
+            class="artifact-action artifact-action--regenerate"
+            type="button"
+            data-label="regenerate"
+            aria-label="Regenerate artifact"
+            :disabled="Boolean(regeneratingArtifactId)"
+            @click="regenerateArtifact(artifact)"
+          >
+            ↻
+          </button>
+          <button
             class="artifact-action artifact-action--fork"
             type="button"
             data-label="fork"
@@ -861,7 +902,9 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <div class="artifact-card__eyebrow">{{ artifact.kind }} · {{ artifact.createdAt }}</div>
+        <div class="artifact-card__eyebrow">
+          {{ regeneratingArtifactId === artifact.id ? 'regenerating' : artifact.kind }} · {{ artifact.createdAt }}
+        </div>
         <h2>{{ artifact.title }}</h2>
 
         <div class="artifact-content" :class="`artifact-content--${artifact.kind}`">
@@ -987,6 +1030,15 @@ onUnmounted(() => {
         :placeholder="promptPlaceholder"
         autocomplete="off"
       />
+      <button
+        v-if="promptMode.type === 'edit'"
+        class="command-bar__regenerate"
+        type="button"
+        :disabled="Boolean(regeneratingArtifactId)"
+        @click="regenerateCurrentEditArtifact"
+      >
+        regenerate
+      </button>
       <button type="submit" :disabled="!prompt.trim() || isGenerating">
         {{ promptActionLabel }}
       </button>

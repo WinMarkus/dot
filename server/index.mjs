@@ -12,72 +12,63 @@ const port = Number(process.env.PORT ?? 3000);
 
 app.use(express.json({ limit: '1mb' }));
 
-const artifactSchema = {
+const portSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['kind', 'title', 'purpose', 'summary', 'content', 'ports', 'children'],
+  required: ['id', 'label', 'type', 'purpose'],
   properties: {
-    kind: { enum: ['text', 'object', 'image', 'video', 'component'] },
-    title: { type: 'string', minLength: 1, maxLength: 64 },
-    purpose: { type: 'string', minLength: 1, maxLength: 360 },
-    summary: { type: 'string', minLength: 1, maxLength: 700 },
-    content: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['text', 'description', 'imagePrompt', 'storyboard', 'html', 'css', 'js', 'data'],
-      properties: {
-        text: { type: 'string' },
-        description: { type: 'string' },
-        imagePrompt: { type: 'string' },
-        storyboard: { type: 'array', maxItems: 8, items: { type: 'string' } },
-        html: { type: 'string' },
-        css: { type: 'string' },
-        js: { type: 'string' },
-        data: { type: 'object', additionalProperties: true },
-      },
-    },
-    ports: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['inputs', 'outputs'],
-      properties: {
-        inputs: {
-          type: 'array',
-          maxItems: 8,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['id', 'label', 'type', 'purpose'],
-            properties: {
-              id: { type: 'string' },
-              label: { type: 'string' },
-              type: { enum: ['text', 'image', 'video', 'data', 'event', 'component', 'any'] },
-              purpose: { type: 'string' },
-            },
-          },
-        },
-        outputs: {
-          type: 'array',
-          maxItems: 8,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['id', 'label', 'type', 'purpose'],
-            properties: {
-              id: { type: 'string' },
-              label: { type: 'string' },
-              type: { enum: ['text', 'image', 'video', 'data', 'event', 'component', 'any'] },
-              purpose: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-    children: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false } },
+    id: { type: 'string' },
+    label: { type: 'string' },
+    type: { enum: ['text', 'image', 'video', 'data', 'event', 'component', 'any'] },
+    purpose: { type: 'string' },
   },
 };
 
-artifactSchema.properties.children.items = artifactSchema;
+const portsSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['inputs', 'outputs'],
+  properties: {
+    inputs: { type: 'array', maxItems: 8, items: portSchema },
+    outputs: { type: 'array', maxItems: 8, items: portSchema },
+  },
+};
+
+const contentSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['text', 'description', 'imagePrompt', 'storyboard', 'html', 'css', 'js', 'data'],
+  properties: {
+    text: { type: 'string' },
+    description: { type: 'string' },
+    imagePrompt: { type: 'string' },
+    storyboard: { type: 'array', maxItems: 8, items: { type: 'string' } },
+    html: { type: 'string' },
+    css: { type: 'string' },
+    js: { type: 'string' },
+    data: { type: 'object', additionalProperties: true },
+  },
+};
+
+function makeArtifactSchema(childrenSchema) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['kind', 'title', 'purpose', 'summary', 'content', 'ports', 'children'],
+    properties: {
+      kind: { enum: ['text', 'object', 'image', 'video', 'component'] },
+      title: { type: 'string', minLength: 1, maxLength: 64 },
+      purpose: { type: 'string', minLength: 1, maxLength: 360 },
+      summary: { type: 'string', minLength: 1, maxLength: 700 },
+      content: contentSchema,
+      ports: portsSchema,
+      children: childrenSchema,
+    },
+  };
+}
+
+const childArtifactSchema = makeArtifactSchema({ type: 'array', maxItems: 0, items: { type: 'object' } });
+const rootArtifactSchema = makeArtifactSchema({ type: 'array', maxItems: 6, items: childArtifactSchema });
 
 const responseSchema = {
   type: 'object',
@@ -88,7 +79,7 @@ const responseSchema = {
       type: 'array',
       minItems: 1,
       maxItems: 4,
-      items: artifactSchema,
+      items: rootArtifactSchema,
     },
   },
 };

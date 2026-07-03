@@ -87,16 +87,14 @@ const responseSchema = {
 function buildSystemPrompt() {
   return `You generate artifacts for Dot, a spatial creation canvas.
 
-Do not answer the user directly. Create one or more living artifacts that can be rendered as bubbles on a canvas.
-
-Return only valid JSON with this shape:
+Return ONLY valid JSON:
 {
   "artifacts": [
     {
       "kind": "text | object | image | video | component",
       "title": "short title",
-      "purpose": "why this object exists",
-      "summary": "how it should be understood on the canvas",
+      "purpose": "why this exists",
+      "summary": "how it should be understood",
       "content": {
         "text": "",
         "description": "",
@@ -107,34 +105,24 @@ Return only valid JSON with this shape:
         "js": "",
         "data": {}
       },
-      "ports": {
-        "inputs": [{ "id": "input_1", "label": "input", "type": "text | image | video | data | event | component | any", "purpose": "why this input exists" }],
-        "outputs": [{ "id": "output_1", "label": "output", "type": "text | image | video | data | event | component | any", "purpose": "why this output exists" }]
-      },
+      "ports": { "inputs": [], "outputs": [] },
       "children": []
     }
   ]
 }
 
-Each artifact must have:
-- a concrete kind: text, object, image, video, or component
-- a short title
-- a purpose: why this object exists
-- a summary: how it should be understood on the canvas
-- content appropriate for its kind
-- ports.inputs and ports.outputs describing possible future connections
-- children for nested sub-artifacts, or []
+Hard rules:
+1. If preferredKind is given, follow it unless the prompt clearly contradicts it.
+2. If the user explicitly asks for an image, video, text, or component, return exactly ONE primary artifact of that kind.
+3. Use object only for plans, lists, structures, semantic containers, inventories, rules, or ambiguous prompts.
+4. For image artifacts, put the useful result in content.imagePrompt. Do not turn it into a semantic object unless explicitly asked.
+5. For video artifacts, put the useful result in content.storyboard.
+6. For text artifacts, put the useful result in content.text.
+7. For component artifacts, return small self-contained HTML/CSS/JS: no external scripts, no imports, no network calls.
+8. Only create children when the user clearly asks for a structure or hierarchy.
+9. Prefer obeying the user's obvious intent over being clever.
 
-Kind rules:
-- text: prose, notes, instructions, stories, copy, explanations
-- object: semantic/data/planning object; use for lists, plans, categories, inventories, game rules, task structures
-- image: do not generate binary images; create a strong image prompt/spec
-- video: do not generate binary video; create a storyboard/spec
-- component: generate a small self-contained HTML/CSS/JS component. Keep it fun, simple, and sandbox-friendly. Do not use external scripts, external images, CDNs, network calls, storage, cookies, or imports.
-
-For broad prompts, create a small useful structure with children.
-For concrete prompts, create one strong artifact.
-Prefer obvious usefulness over cleverness.`;
+Be concrete and useful.`;
 }
 
 function safeString(value, fallback = '') {
@@ -143,6 +131,82 @@ function safeString(value, fallback = '') {
 
 function safeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function inferPreferredKind(prompt, fallback = 'object') {
+  const text = safeString(prompt).toLowerCase();
+
+  if (/\b(component|html|css|javascript|js|vue|react|button|form|counter|widget|calculator|input|modal)\b/.test(text)) {
+    return 'component';
+  }
+
+  if (/\b(video|animation|animated|clip|movie|trailer|gif)\b/.test(text)) {
+    return 'video';
+  }
+
+  if (/\b(image|photo|picture|illustration|poster|logo|icon|draw|drawing|visual)\b/.test(text)) {
+    return 'image';
+  }
+
+  if (/\b(write|text|story|poem|essay|article|copy|headline|markdown|explain|summary)\b/.test(text)) {
+    return 'text';
+  }
+
+  const normalizedFallback = safeString(fallback, 'object');
+  return ['text', 'object', 'image', 'video', 'component'].includes(normalizedFallback) ? normalizedFallback : 'object';
+}
+
+function compactCanvasContext(canvasContext) {
+  return {
+    artifacts: safeArray(canvasContext?.artifacts)
+      .slice(0, 12)
+      .map((artifact) => ({
+        title: safeString(artifact?.title).slice(0, 60),
+        kind: safeString(artifact?.kind, 'object'),
+        parentId: artifact?.parentId ?? null,
+        ports: {
+          inputs: safeArray(artifact?.ports?.inputs)
+            .slice(0, 3)
+            .map((port) => safeString(port?.label).slice(0, 40)),
+          outputs: safeArray(artifact?.ports?.outputs)
+            .slice(0, 3)
+            .map((port) => safeString(port?.label).slice(0, 40)),
+        },
+      })),
+  };
+}
+
+function compactSelectedArtifact(selectedArtifact) {
+  if (!selectedArtifact) return null;
+
+  return {
+    kind: safeString(selectedArtifact.kind, 'object'),
+    title: safeString(selectedArtifact.title, 'Artifact').slice(0, 60),
+    prompt: safeString(selectedArtifact.prompt).slice(0, 240),
+    purpose: safeString(selectedArtifact?.content?.purpose).slice(0, 240),
+    summary: safeString(selectedArtifact?.content?.summary).slice(0, 320),
+    ports: {
+      inputs: safeArray(selectedArtifact?.content?.ports?.inputs)
+        .slice(0, 4)
+        .map((port) => ({ label: safeString(port?.label).slice(0, 40), type: safeString(port?.type, 'any') })),
+      outputs: safeArray(selectedArtifact?.content?.ports?.outputs)
+        .slice(0, 4)
+        .map((port) => ({ label: safeString(port?.label).slice(0, 40), type: safeString(port?.type, 'any') })),
+    },
+  };
+}
+
+function buildUserPayload(body) {
+  const preferredKind =
+    safeString(body?.preferredKind) || inferPreferredKind(body?.prompt, safeString(body?.selectedArtifact?.kind, 'object'));
+
+  return {
+    mode: safeString(body?.mode, 'create'),
+    prompt: safeString(body?.prompt),
+    preferredKind,
+    selectedArtifact: compactSelectedArtifact(body?.selectedArtifact),
+    canvasContext: compactCanvasContext(body?.canvasContext),
+  };
 }
 
 function safePort(port, index, direction) {
@@ -211,21 +275,24 @@ function buildOpenRouterRequestBody(model, body, responseFormat) {
     model,
     messages: [
       { role: 'system', content: buildSystemPrompt() },
-      { role: 'user', content: JSON.stringify(body) },
+      { role: 'user', content: JSON.stringify(buildUserPayload(body)) },
     ],
     response_format: responseFormat,
-    temperature: 0.72,
-    max_tokens: 3200,
+    temperature: 0.3,
+    max_tokens: 1800,
   };
 }
 
 async function requestOpenRouter(apiKey, model, body, responseFormat, providerMode) {
+  const userPayload = buildUserPayload(body);
+
   logGeneration('openrouter_attempt', {
     model,
     providerMode,
-    promptLength: safeString(body?.prompt).length,
-    mode: safeString(body?.mode, 'create'),
-    canvasArtifacts: safeArray(body?.canvasContext?.artifacts).length,
+    preferredKind: userPayload.preferredKind,
+    promptLength: safeString(userPayload.prompt).length,
+    mode: safeString(userPayload.mode, 'create'),
+    canvasArtifacts: safeArray(userPayload?.canvasContext?.artifacts).length,
   });
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -335,9 +402,12 @@ app.post('/api/generate', async (request, response) => {
   const startedAt = Date.now();
   const prompt = safeString(request.body?.prompt).trim();
   const mode = safeString(request.body?.mode, 'create');
+  const preferredKind =
+    safeString(request.body?.preferredKind) || inferPreferredKind(prompt, safeString(request.body?.selectedArtifact?.kind, 'object'));
 
   logGeneration('request_start', {
     mode,
+    preferredKind,
     promptLength: prompt.length,
     selectedKind: safeString(request.body?.selectedArtifact?.kind, null),
     canvasArtifacts: safeArray(request.body?.canvasContext?.artifacts).length,
@@ -353,6 +423,7 @@ app.post('/api/generate', async (request, response) => {
     const result = await callOpenRouter({
       prompt,
       mode,
+      preferredKind,
       selectedArtifact: request.body?.selectedArtifact ?? null,
       canvasContext: request.body?.canvasContext ?? { artifacts: [] },
     });

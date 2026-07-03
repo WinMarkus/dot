@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import App from './App.vue';
+import { installInspectorOriginTracking } from './inspector-origin';
 import './styles.css';
 import './delete-markers.css';
 import './mobile-command-bar.css';
@@ -12,4 +13,5 @@ import './artifact-open-guard.css';
 import './artifact-open-guard';
 import './inspector-genie.css';
 
+installInspectorOriginTracking();
 createApp(App).mount('#app');

@@ -18,6 +18,8 @@ import {
 } from './geometry';
 import type { Artifact, CameraState, DeletedMarker, DragState, Point, PromptMode, Viewport } from './types';
 
+const FORK_SPLIT_MS = 840;
+
 const dot = ref<Point>({ x: 0, y: 0 });
 const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
 const isDotActive = ref(false);
@@ -32,7 +34,10 @@ const inspectorEditPrompt = ref('');
 const artifacts = ref<Artifact[]>([]);
 const deletingArtifactIds = ref<string[]>([]);
 const deletedMarkers = ref<DeletedMarker[]>([]);
+const splittingArtifactIds = ref<string[]>([]);
+const forkBornArtifactIds = ref<string[]>([]);
 const deletionTimers = new Map<string, number>();
+const forkAnimationTimers = new Map<string, number>();
 
 const selectedArtifactId = ref<string | null>(null);
 const activeActionArtifactId = ref<string | null>(null);
@@ -230,6 +235,29 @@ function openPromptAtScreenPoint(point: Point) {
   dot.value = screenToWorld(point);
   resetPromptMode();
   activatePrompt();
+}
+
+function pushUniqueId(target: typeof splittingArtifactIds, id: string) {
+  if (!target.value.includes(id)) {
+    target.value.push(id);
+  }
+}
+
+function removeId(target: typeof splittingArtifactIds, id: string) {
+  target.value = target.value.filter((item) => item !== id);
+}
+
+function animateForkSplit(sourceId: string, forkId: string) {
+  pushUniqueId(splittingArtifactIds, sourceId);
+  pushUniqueId(forkBornArtifactIds, forkId);
+
+  const timerId = window.setTimeout(() => {
+    removeId(splittingArtifactIds, sourceId);
+    removeId(forkBornArtifactIds, forkId);
+    forkAnimationTimers.delete(forkId);
+  }, FORK_SPLIT_MS);
+
+  forkAnimationTimers.set(forkId, timerId);
 }
 
 function getNestingCandidate(artifact: Artifact, screenPoint: Point) {
@@ -643,12 +671,13 @@ function forkArtifact(artifact: Artifact) {
   const fork = cloneArtifact(artifact);
   fork.id = crypto.randomUUID();
   fork.title = `Fork of ${artifact.title}`;
-  fork.x = artifact.x + 48;
-  fork.y = artifact.y + 48;
+  fork.x = artifact.x + 74;
+  fork.y = artifact.y + 34;
   fork.createdAt = nowLabel();
   fork.parentId = undefined;
 
   artifacts.value.push(fork);
+  animateForkSplit(artifact.id, fork.id);
   selectedArtifactId.value = fork.id;
   activeActionArtifactId.value = null;
 }
@@ -775,6 +804,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
   deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
+  forkAnimationTimers.forEach((timerId) => window.clearTimeout(timerId));
 });
 </script>
 
@@ -821,6 +851,8 @@ onUnmounted(() => {
           'artifact-card--deleting': deletingArtifactIds.includes(artifact.id),
           'artifact-card--nest-target': dropTargetArtifactId === artifact.id,
           'artifact-card--has-children': getChildArtifacts(artifact.id).length,
+          'artifact-card--splitting': splittingArtifactIds.includes(artifact.id),
+          'artifact-card--fork-born': forkBornArtifactIds.includes(artifact.id),
         }"
         :style="{
           left: `${artifact.x}px`,

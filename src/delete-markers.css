@@ -179,7 +179,13 @@
   border-radius: 999px;
   background: transparent;
   transform: translate(-50%, -50%);
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+}
+
+.deleted-marker--dragging {
+  z-index: 20;
+  cursor: grabbing;
 }
 
 .deleted-marker::before,
@@ -195,6 +201,10 @@
   animation: deleted-marker-pulse 2.6s ease-in-out infinite;
 }
 
+.deleted-marker--dragging::before {
+  animation-play-state: paused;
+}
+
 .deleted-marker::after {
   inset: 10px;
   background: #ff5f57;
@@ -208,7 +218,8 @@
 }
 
 .deleted-marker:hover::after,
-.deleted-marker:focus-visible::after {
+.deleted-marker:focus-visible::after,
+.deleted-marker--dragging::after {
   background: #ffbc75;
   box-shadow:
     0 0 16px rgba(255, 188, 117, 0.95),
@@ -238,7 +249,8 @@
 }
 
 .deleted-marker:hover span,
-.deleted-marker:focus-visible span {
+.deleted-marker:focus-visible span,
+.deleted-marker--dragging span {
   opacity: 1;
   transform: translateX(-50%) translateY(0) scale(1);
 }
@@ -258,101 +270,4 @@
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.03em;
-}
-
-.marker-control:hover,
-.marker-control:focus-visible {
-  color: #fffaf0;
-  border-color: rgba(255, 123, 114, 0.36);
-  background: rgba(38, 20, 18, 0.82);
-}
-
-.inspector-panel__delete {
-  width: 100%;
-  margin-top: 16px;
-  border: 1px solid rgba(255, 123, 114, 0.22);
-  border-radius: 999px;
-  padding: 11px 14px;
-  color: rgba(255, 250, 240, 0.84);
-  background: rgba(255, 123, 114, 0.12);
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.inspector-panel__delete:hover,
-.inspector-panel__delete:focus-visible {
-  background: rgba(255, 123, 114, 0.18);
-}
-
-@keyframes deleted-toast-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -38%) scale(0.86);
-    filter: blur(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-    filter: blur(0);
-  }
-}
-
-@keyframes deleted-marker-pulse {
-  0%,
-  100% {
-    opacity: 0.65;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 0.18;
-    transform: scale(1.7);
-  }
-}
-
-@media (max-width: 760px) {
-  .inspector-panel {
-    top: auto;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    width: auto;
-    max-height: 72dvh;
-    padding: 22px 22px max(22px, env(safe-area-inset-bottom));
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 28px 28px 0 0;
-  }
-
-  .inspector-panel::before {
-    display: block;
-    width: 42px;
-    height: 4px;
-    margin: -8px auto 18px;
-    border-radius: 999px;
-    background: rgba(243, 239, 230, 0.22);
-    content: "";
-  }
-
-  .marker-control {
-    bottom: max(18px, env(safe-area-inset-bottom));
-    left: 56px;
-  }
-
-  .object-preview__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .command-bar {
-    grid-template-columns: 1fr auto;
-  }
-
-  .command-bar__regenerate {
-    grid-column: 1 / -1;
-    justify-self: stretch;
-  }
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
-import { createArtifactFromPrompt, cloneArtifact, fakeGenerateArtifact, nowLabel } from './artifact-factory';
+import { generateArtifactsWithAi } from './ai-client';
+import { createArtifactFromGenerated, cloneArtifact, fakeGenerateArtifact, nowLabel } from './artifact-factory';
 import {
   canNestArtifact as canNestArtifactInTree,
   getArtifactRenderHeight as getArtifactTreeRenderHeight,
@@ -8,6 +9,7 @@ import {
   getParentArtifact as getTreeParentArtifact,
 } from './artifact-tree';
 import { ARTIFACT_HEIGHT, ARTIFACT_WIDTH, DELETE_TRANSITION_MS, MIN_ZOOM } from './constants';
+import { createComponentSrcDoc } from './component-srcdoc';
 import {
   centerCameraOn as createCenteredCamera,
   clamp,
@@ -16,7 +18,7 @@ import {
   worldToScreen as convertWorldToScreen,
   zoomCameraAt,
 } from './geometry';
-import type { Artifact, CameraState, DeletedMarker, DragState, Point, PromptMode, Viewport } from './types';
+import type { Artifact, CameraState, DeletedMarker, DragState, GeneratedArtifact, Point, PromptMode, Viewport } from './types';
 
 const FORK_SPLIT_MS = 840;
 
@@ -30,6 +32,7 @@ const promptMode = ref<PromptMode>({ type: 'create' });
 const promptInput = ref<HTMLInputElement | null>(null);
 const inspectorPanel = ref<HTMLElement | null>(null);
 const inspectorEditPrompt = ref('');
+const generationStatus = ref<string | null>(null);
 
 const artifacts = ref<Artifact[]>([]);
 const deletingArtifactIds = ref<string[]>([]);
@@ -258,6 +261,96 @@ function animateForkSplit(sourceId: string, forkId: string) {
   }, FORK_SPLIT_MS);
 
   forkAnimationTimers.set(forkId, timerId);
+}
+
+function addGenerationMeta(generated: GeneratedArtifact, provider?: string, model?: string): GeneratedArtifact {
+  return {
+    ...generated,
+    content: {
+      ...generated.content,
+      provider,
+      model,
+    },
+    children: generated.children?.map((child) => addGenerationMeta(child, provider, model)) ?? [],
+  };
+}
+
+function createCanvasContext() {
+  return {
+    artifacts: artifacts.value.map((artifact) => ({
+      id: artifact.id,
+      kind: artifact.kind,
+      title: artifact.title,
+      prompt: artifact.prompt,
+      parentId: artifact.parentId ?? null,
+      purpose: artifact.content.purpose ?? '',
+      summary: artifact.content.summary ?? '',
+      ports: artifact.content.ports ?? { inputs: [], outputs: [] },
+    })),
+  };
+}
+
+async function requestGeneratedArtifacts(value: string, mode: 'create' | 'edit' | 'regenerate', selectedArtifact?: Artifact) {
+  const effectivePrompt = value || selectedArtifact?.prompt || selectedArtifact?.title || 'Regenerate artifact';
+
+  try {
+    const result = await generateArtifactsWithAi({
+      prompt: effectivePrompt,
+      mode,
+      selectedArtifact: selectedArtifact ?? null,
+      canvasContext: createCanvasContext(),
+    });
+
+    generationStatus.value = result.model ? `ai · ${result.model}` : 'ai';
+    return result.artifacts.map((artifact) => addGenerationMeta(artifact, result.provider, result.model));
+  } catch (error) {
+    console.warn('AI generation failed. Falling back to local generator.', error);
+    generationStatus.value = 'local fallback';
+    return [fakeGenerateArtifact(effectivePrompt, selectedArtifact)];
+  }
+}
+
+function placeGeneratedArtifactTree(generated: GeneratedArtifact, nextPrompt: string, position: Point, parentId?: string) {
+  const artifact = createArtifactFromGenerated(generated, nextPrompt, position, parentId);
+  artifacts.value.push(artifact);
+
+  generated.children?.forEach((child, index) => {
+    placeGeneratedArtifactTree(
+      child,
+      child.title,
+      { x: artifact.x + 28 + index * 18, y: artifact.y + artifact.height + 32 },
+      artifact.id,
+    );
+  });
+
+  return artifact;
+}
+
+function placeGeneratedArtifacts(generatedArtifacts: GeneratedArtifact[], nextPrompt: string, position: Point) {
+  return generatedArtifacts.map((generated, index) =>
+    placeGeneratedArtifactTree(generated, nextPrompt, {
+      x: position.x + index * (ARTIFACT_WIDTH + 38),
+      y: position.y + (index % 2) * 36,
+    }),
+  );
+}
+
+function applyGeneratedArtifact(target: Artifact, generated: GeneratedArtifact, nextPrompt: string) {
+  const mapped = createArtifactFromGenerated(generated, nextPrompt, { x: target.x, y: target.y }, target.parentId);
+
+  target.kind = mapped.kind;
+  target.title = mapped.title;
+  target.prompt = nextPrompt;
+  target.content = mapped.content;
+
+  generated.children?.forEach((child, index) => {
+    placeGeneratedArtifactTree(
+      child,
+      child.title,
+      { x: target.x + 28 + index * 18, y: target.y + target.height + 32 },
+      target.id,
+    );
+  });
 }
 
 function getNestingCandidate(artifact: Artifact, screenPoint: Point) {
@@ -559,18 +652,16 @@ async function regenerateArtifact(artifact: Artifact) {
   regeneratingArtifactId.value = artifact.id;
   activeActionArtifactId.value = null;
 
-  await new Promise((resolve) => window.setTimeout(resolve, 850));
-
-  const current = artifacts.value.find((item) => item.id === artifact.id);
-  if (current) {
-    const generated = fakeGenerateArtifact(current.prompt);
-    current.kind = generated.kind;
-    current.title = generated.title;
-    current.content = generated.content;
-    selectedArtifactId.value = current.id;
+  try {
+    const generated = await requestGeneratedArtifacts('', 'regenerate', artifact);
+    const current = artifacts.value.find((item) => item.id === artifact.id);
+    if (current && generated[0]) {
+      applyGeneratedArtifact(current, generated[0], current.prompt);
+      selectedArtifactId.value = current.id;
+    }
+  } finally {
+    regeneratingArtifactId.value = null;
   }
-
-  regeneratingArtifactId.value = null;
 }
 
 async function submitPrompt() {
@@ -592,28 +683,28 @@ async function submitPrompt() {
 
   isGenerating.value = true;
 
-  await new Promise((resolve) => window.setTimeout(resolve, 850));
-
-  if (mode.type === 'edit') {
-    const artifact = artifacts.value.find((item) => item.id === mode.artifactId);
-    if (artifact) {
-      const generated = fakeGenerateArtifact(value, artifact);
-      artifact.kind = generated.kind;
-      artifact.title = generated.title;
-      artifact.prompt = value;
-      artifact.content = generated.content;
-      selectedArtifactId.value = artifact.id;
+  try {
+    if (mode.type === 'edit') {
+      const artifact = artifacts.value.find((item) => item.id === mode.artifactId);
+      if (artifact) {
+        const generated = await requestGeneratedArtifacts(value, 'edit', artifact);
+        if (generated[0]) {
+          applyGeneratedArtifact(artifact, generated[0], value);
+          selectedArtifactId.value = artifact.id;
+        }
+      }
+    } else {
+      const generated = await requestGeneratedArtifacts(value, 'create');
+      const created = placeGeneratedArtifacts(generated, value, chooseArtifactPosition(dot.value));
+      selectedArtifactId.value = created[0]?.id ?? null;
     }
-  } else {
-    const artifact = createArtifactFromPrompt(value, chooseArtifactPosition(dot.value));
-    artifacts.value.push(artifact);
-    selectedArtifactId.value = artifact.id;
-  }
 
-  activeActionArtifactId.value = null;
-  isDotActive.value = false;
-  isGenerating.value = false;
-  resetPromptMode();
+    activeActionArtifactId.value = null;
+    isDotActive.value = false;
+    resetPromptMode();
+  } finally {
+    isGenerating.value = false;
+  }
 }
 
 async function submitInspectorEdit() {
@@ -630,20 +721,17 @@ async function submitInspectorEdit() {
   isGenerating.value = true;
   activeActionArtifactId.value = null;
 
-  await new Promise((resolve) => window.setTimeout(resolve, 850));
-
-  const current = artifacts.value.find((item) => item.id === artifact.id);
-  if (current) {
-    const generated = fakeGenerateArtifact(value, current);
-    current.kind = generated.kind;
-    current.title = generated.title;
-    current.prompt = value;
-    current.content = generated.content;
-    selectedArtifactId.value = current.id;
-    inspectorEditPrompt.value = '';
+  try {
+    const generated = await requestGeneratedArtifacts(value, 'edit', artifact);
+    const current = artifacts.value.find((item) => item.id === artifact.id);
+    if (current && generated[0]) {
+      applyGeneratedArtifact(current, generated[0], value);
+      selectedArtifactId.value = current.id;
+      inspectorEditPrompt.value = '';
+    }
+  } finally {
+    isGenerating.value = false;
   }
-
-  isGenerating.value = false;
 }
 
 function inspectArtifact(artifact: Artifact) {
@@ -900,7 +988,7 @@ onUnmounted(() => {
 
         <div class="artifact-content" :class="`artifact-content--${artifact.kind}`">
           <template v-if="artifact.kind === 'text'">
-            <p>{{ artifact.content.markdown }}</p>
+            <p>{{ artifact.content.markdown || artifact.content.text || artifact.content.raw }}</p>
           </template>
 
           <template v-else-if="artifact.kind === 'object'">
@@ -914,21 +1002,30 @@ onUnmounted(() => {
               </div>
               <div class="object-preview__grid">
                 <div>
-                  <small>capabilities</small>
-                  <span v-for="capability in artifact.content.capabilities ?? []" :key="capability">{{ capability }}</span>
+                  <small>inputs</small>
+                  <span v-for="port in artifact.content.ports?.inputs ?? []" :key="port.id">{{ port.label }}</span>
                 </div>
                 <div>
-                  <small>connections</small>
-                  <span v-for="connection in artifact.content.connections ?? []" :key="connection">{{ connection }}</span>
+                  <small>outputs</small>
+                  <span v-for="port in artifact.content.ports?.outputs ?? []" :key="port.id">{{ port.label }}</span>
                 </div>
               </div>
             </div>
           </template>
 
+          <template v-else-if="artifact.kind === 'component'">
+            <iframe
+              class="component-frame"
+              title="Sandboxed generated component"
+              sandbox="allow-scripts"
+              :srcdoc="createComponentSrcDoc(artifact.content)"
+            />
+          </template>
+
           <template v-else-if="artifact.kind === 'image'">
             <div class="image-preview" role="img" :aria-label="artifact.content.alt ?? artifact.title">
               <span />
-              <p>{{ artifact.content.description }}</p>
+              <p>{{ artifact.content.imagePrompt || artifact.content.description }}</p>
             </div>
           </template>
 
@@ -980,6 +1077,8 @@ onUnmounted(() => {
     <button v-if="deletedMarkers.length" class="marker-control" type="button" @pointerdown.stop @click="clearDeletedMarkers">
       clear deleted dots
     </button>
+
+    <div v-if="generationStatus" class="generation-status">{{ generationStatus }}</div>
 
     <div class="canvas-help">
       <button class="canvas-help__trigger" type="button" aria-label="Show canvas controls">?</button>
@@ -1036,6 +1135,10 @@ onUnmounted(() => {
         <div>
           <dt>prompt</dt>
           <dd>{{ inspectedArtifact.prompt }}</dd>
+        </div>
+        <div>
+          <dt>purpose</dt>
+          <dd>{{ inspectedArtifact.content.purpose ?? '—' }}</dd>
         </div>
         <div>
           <dt>parent</dt>

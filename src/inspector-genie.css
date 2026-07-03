@@ -1,0 +1,112 @@
+.inspector-panel {
+  animation: inspector-genie-out 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: calc(100% - 72px) -36px;
+  will-change: transform, opacity, border-radius, filter;
+}
+
+.inspector-panel::after {
+  position: absolute;
+  top: -34px;
+  right: 66px;
+  width: 12px;
+  height: 42px;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 243, 199, 0.72),
+    rgba(255, 188, 117, 0.18),
+    transparent
+  );
+  content: "";
+  filter: blur(7px);
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleY(0.2);
+  transform-origin: top center;
+  animation: inspector-genie-wisp 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes inspector-genie-out {
+  0% {
+    opacity: 0;
+    border-radius: 999px;
+    filter: blur(12px);
+    transform: translate(42px, -42px) scale(0.08, 0.02) skewX(-12deg);
+  }
+
+  42% {
+    opacity: 0.92;
+    border-radius: 48px;
+    filter: blur(4px);
+    transform: translate(12px, -18px) scale(0.62, 1.06) skewX(5deg);
+  }
+
+  72% {
+    opacity: 1;
+    border-radius: 34px;
+    filter: blur(0);
+    transform: translate(-2px, 2px) scale(1.02, 0.98) skewX(-1deg);
+  }
+
+  100% {
+    opacity: 1;
+    border-radius: 28px;
+    filter: blur(0);
+    transform: translate(0, 0) scale(1) skewX(0);
+  }
+}
+
+@keyframes inspector-genie-wisp {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scaleY(0.1) scaleX(0.2);
+  }
+
+  36% {
+    opacity: 0.72;
+    transform: translateY(0) scaleY(1.2) scaleX(0.9);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(16px) scaleY(0.3) scaleX(1.6);
+  }
+}
+
+@media (max-width: 760px) {
+  .inspector-panel {
+    transform-origin: 50% 100%;
+    animation-name: inspector-genie-sheet-out;
+  }
+
+  .inspector-panel::after {
+    display: none;
+  }
+}
+
+@keyframes inspector-genie-sheet-out {
+  0% {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateY(34px) scale(0.14, 0.04);
+  }
+
+  48% {
+    opacity: 0.95;
+    filter: blur(3px);
+    transform: translateY(8px) scale(0.78, 1.04);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector-panel,
+  .inspector-panel::after {
+    animation: none;
+  }
+}

@@ -40,6 +40,15 @@ A minimal generative creation canvas prototype.
 - press F to fit all current objects
 - press 0 to reset the camera to the seed dot
 
+## Source structure
+
+- `src/types.ts` contains shared domain and interaction types
+- `src/constants.ts` contains core sizing, zoom, and transition constants
+- `src/artifact-factory.ts` contains fake generation, artifact cloning, and artifact creation helpers
+- `src/artifact-tree.ts` contains parent/child artifact tree helpers
+- `src/geometry.ts` contains canvas, camera, and coordinate helpers
+- `src/App.vue` still owns runtime interaction orchestration and rendering
+
 ## Run locally
 
 ```bash

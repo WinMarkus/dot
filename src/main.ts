@@ -12,6 +12,7 @@ import './closed-open-bubbles.css';
 import './artifact-open-guard.css';
 import './artifact-open-guard';
 import './inspector-genie.css';
+import './nested-bubbles.css';
 
 installInspectorOriginTracking();
 createApp(App).mount('#app');

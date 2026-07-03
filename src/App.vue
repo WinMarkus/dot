@@ -39,6 +39,7 @@ const dropTargetArtifactId = ref<string | null>(null);
 
 const dotDragState = ref<DragState | null>(null);
 const artifactDragState = ref<(DragState & { artifactId: string }) | null>(null);
+const deletedMarkerDragState = ref<(DragState & { markerId: string }) | null>(null);
 const panState = ref<DragState | null>(null);
 
 const dotClass = computed(() => ({
@@ -329,6 +330,53 @@ function handleArtifactPointerUp(event: PointerEvent) {
   }
 
   dropTargetArtifactId.value = null;
+}
+
+function handleDeletedMarkerPointerDown(event: PointerEvent, marker: DeletedMarker) {
+  event.stopPropagation();
+
+  const target = event.currentTarget as HTMLElement;
+  target.setPointerCapture(event.pointerId);
+
+  deletedMarkerDragState.value = {
+    markerId: marker.id,
+    pointerId: event.pointerId,
+    startPointerX: event.clientX,
+    startPointerY: event.clientY,
+    startX: marker.x,
+    startY: marker.y,
+    moved: false,
+  };
+}
+
+function handleDeletedMarkerPointerMove(event: PointerEvent) {
+  const state = deletedMarkerDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  const dx = (event.clientX - state.startPointerX) / camera.value.zoom;
+  const dy = (event.clientY - state.startPointerY) / camera.value.zoom;
+
+  if (Math.abs(event.clientX - state.startPointerX) + Math.abs(event.clientY - state.startPointerY) > 4) {
+    state.moved = true;
+  }
+
+  const marker = deletedMarkers.value.find((item) => item.id === state.markerId);
+  if (!marker) return;
+
+  marker.x = state.startX + dx;
+  marker.y = state.startY + dy;
+}
+
+function handleDeletedMarkerPointerUp(event: PointerEvent, marker: DeletedMarker) {
+  const state = deletedMarkerDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+  deletedMarkerDragState.value = null;
+
+  if (!state.moved) {
+    revitalizeDeletedMarker(marker);
+  }
 }
 
 function handleWorkspacePointerDown(event: PointerEvent) {
@@ -637,12 +685,14 @@ onUnmounted(() => {
         v-for="marker in deletedMarkers"
         :key="marker.id"
         class="deleted-marker"
+        :class="{ 'deleted-marker--dragging': deletedMarkerDragState?.markerId === marker.id }"
         type="button"
         :title="`Revitalise: ${marker.title}`"
         :aria-label="`Revitalise deleted artifact ${marker.title}`"
         :style="{ left: `${marker.x}px`, top: `${marker.y}px` }"
-        @pointerdown.stop
-        @click="revitalizeDeletedMarker(marker)"
+        @pointerdown="handleDeletedMarkerPointerDown($event, marker)"
+        @pointermove="handleDeletedMarkerPointerMove"
+        @pointerup="handleDeletedMarkerPointerUp($event, marker)"
       >
         <span>revitalise</span>
       </button>

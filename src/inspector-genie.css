@@ -1,7 +1,7 @@
 .inspector-panel {
   --inspector-origin-local-x: calc(100% - 72px);
   --inspector-origin-local-y: -36px;
-  animation: inspector-genie-out 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: inspector-genie-out 920ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: var(--inspector-origin-local-x) var(--inspector-origin-local-y);
   will-change: transform, opacity, border-radius, filter;
 }
@@ -29,7 +29,7 @@
   pointer-events: none;
   transform: scaleY(0.2);
   transform-origin: top center;
-  animation: inspector-genie-wisp 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: inspector-genie-wisp 920ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes inspector-genie-out {

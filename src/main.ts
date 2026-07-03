@@ -1,7 +1,19 @@
 import { createApp } from 'vue';
 import App from './App.vue';
 import { installInspectorOriginTracking } from './inspector-origin';
-import './app.css';
+import './styles.css';
+import './delete-markers.css';
+import './mobile-command-bar.css';
+import './mobile-prompt-safe.css';
+import './delete-transition.css';
+import './seed-dot-motion.css';
+import './bubble-shape.css';
+import './closed-open-bubbles.css';
+import './artifact-open-guard.css';
+import './inspector-genie.css';
+import './fork-split.css';
+import './ai-artifacts.css';
+import './nested-bubbles.css';
 import './artifact-open-guard';
 
 installInspectorOriginTracking();

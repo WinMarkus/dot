@@ -13,21 +13,16 @@
 }
 
 .artifact-card--has-children {
+  position: relative;
+  overflow: hidden;
   transition: min-height 220ms ease;
 }
 
 .nested-bubbles {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(142, 255, 135, 0.08), transparent 44%),
-    rgba(0, 0, 0, 0.14);
+  position: absolute;
+  inset: auto 18px 16px 18px;
+  height: 92px;
+  pointer-events: none;
 }
 
 .nested-bubbles::before {
@@ -35,6 +30,7 @@
 }
 
 .nested-bubble {
+  position: absolute;
   display: grid;
   width: 38px;
   height: 38px;
@@ -44,7 +40,8 @@
   border-radius: 999px;
   color: rgba(255, 250, 240, 0.88);
   background:
-    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.18), transparent 28%),
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.2), transparent 28%),
+    radial-gradient(circle at 70% 72%, rgba(142, 255, 135, 0.1), transparent 40%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.035)),
     rgba(255, 255, 255, 0.045);
   box-shadow:
@@ -52,18 +49,37 @@
     inset 0 0 16px rgba(142, 255, 135, 0.04);
   cursor: pointer;
   font-weight: 900;
+  pointer-events: auto;
   text-transform: uppercase;
+  transform: translate(-50%, -50%);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    scale 160ms ease;
 }
+
+.nested-bubble:nth-child(10n + 1) { left: 12%; top: 48%; }
+.nested-bubble:nth-child(10n + 2) { left: 34%; top: 22%; }
+.nested-bubble:nth-child(10n + 3) { left: 62%; top: 56%; }
+.nested-bubble:nth-child(10n + 4) { left: 82%; top: 30%; }
+.nested-bubble:nth-child(10n + 5) { left: 23%; top: 76%; }
+.nested-bubble:nth-child(10n + 6) { left: 49%; top: 78%; }
+.nested-bubble:nth-child(10n + 7) { left: 75%; top: 78%; }
+.nested-bubble:nth-child(10n + 8) { left: 10%; top: 18%; }
+.nested-bubble:nth-child(10n + 9) { left: 51%; top: 18%; }
+.nested-bubble:nth-child(10n + 10) { left: 90%; top: 62%; }
 
 .nested-bubble:hover,
 .nested-bubble:focus-visible {
   border-color: rgba(255, 188, 117, 0.44);
   background:
-    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.2), transparent 28%),
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.24), transparent 28%),
     rgba(255, 188, 117, 0.14);
   box-shadow:
     0 12px 30px rgba(0, 0, 0, 0.26),
     0 0 22px rgba(255, 188, 117, 0.18);
+  scale: 1.08;
 }
 
 .nested-bubble span {
@@ -85,14 +101,53 @@
   display: none;
 }
 
+.artifact-card--dragging.artifact-card--has-children .nested-bubble {
+  animation: contained-bubble-bounce 620ms ease-in-out infinite alternate;
+}
+
+.artifact-card--dragging.artifact-card--has-children .nested-bubble:nth-child(3n + 1) {
+  animation-duration: 520ms;
+  animation-delay: -140ms;
+}
+
+.artifact-card--dragging.artifact-card--has-children .nested-bubble:nth-child(3n + 2) {
+  animation-duration: 740ms;
+  animation-delay: -260ms;
+}
+
+.artifact-card--dragging.artifact-card--has-children .nested-bubble:nth-child(3n + 3) {
+  animation-duration: 680ms;
+  animation-delay: -80ms;
+}
+
+@keyframes contained-bubble-bounce {
+  0% {
+    transform: translate(calc(-50% - 8px), calc(-50% + 7px)) scale(0.96);
+  }
+
+  45% {
+    transform: translate(calc(-50% + 6px), calc(-50% - 9px)) scale(1.04);
+  }
+
+  100% {
+    transform: translate(calc(-50% + 11px), calc(-50% + 4px)) scale(0.98);
+  }
+}
+
 @media (max-width: 760px) {
   .nested-bubbles {
-    gap: 9px;
-    padding: 11px;
+    inset: auto 18px 16px 18px;
+    height: 96px;
   }
 
   .nested-bubble {
     width: 40px;
     height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artifact-card--dragging.artifact-card--has-children .nested-bubble {
+    animation: none;
   }
 }

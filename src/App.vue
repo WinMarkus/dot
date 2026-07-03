@@ -34,6 +34,7 @@ type Artifact = {
   height: number;
   createdAt: string;
   content: ArtifactContent;
+  parentId?: string;
 };
 
 type GeneratedArtifact = {
@@ -71,6 +72,7 @@ const ARTIFACT_HEIGHT = 230;
 const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 2.4;
 const DELETE_TRANSITION_MS = 560;
+const NEST_EXTRA_HEIGHT = 82;
 
 const dot = ref<Point>({ x: 0, y: 0 });
 const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
@@ -89,6 +91,7 @@ const deletionTimers = new Map<string, number>();
 const selectedArtifactId = ref<string | null>(null);
 const activeActionArtifactId = ref<string | null>(null);
 const inspectedArtifactId = ref<string | null>(null);
+const dropTargetArtifactId = ref<string | null>(null);
 
 const dotDragState = ref<DragState | null>(null);
 const artifactDragState = ref<(DragState & { artifactId: string }) | null>(null);
@@ -108,6 +111,8 @@ const gridStyle = computed(() => ({
   backgroundPosition: `${camera.value.x}px ${camera.value.y}px`,
   backgroundSize: `${44 * camera.value.zoom}px ${44 * camera.value.zoom}px`,
 }));
+
+const topLevelArtifacts = computed(() => artifacts.value.filter((artifact) => !artifact.parentId));
 
 const promptPlaceholder = computed(() =>
   promptMode.value.type === 'edit' ? 'what should change about this?' : 'what do we want to build today?',
@@ -151,6 +156,40 @@ function cloneArtifact(artifact: Artifact): Artifact {
 
 function uniq(values: string[]) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function getChildArtifacts(parentId: string) {
+  return artifacts.value.filter((artifact) => artifact.parentId === parentId);
+}
+
+function getParentArtifact(artifact: Artifact) {
+  return artifact.parentId ? artifacts.value.find((item) => item.id === artifact.parentId) ?? null : null;
+}
+
+function getArtifactRenderHeight(artifact: Artifact) {
+  return artifact.height + (getChildArtifacts(artifact.id).length ? NEST_EXTRA_HEIGHT : 0);
+}
+
+function isDescendantOf(possibleChildId: string, possibleParentId: string): boolean {
+  let current = artifacts.value.find((artifact) => artifact.id === possibleChildId);
+
+  while (current?.parentId) {
+    if (current.parentId === possibleParentId) return true;
+    current = artifacts.value.find((artifact) => artifact.id === current?.parentId);
+  }
+
+  return false;
+}
+
+function canNestArtifact(child: Artifact, parent: Artifact) {
+  return (
+    child.id !== parent.id &&
+    !child.parentId &&
+    !parent.parentId &&
+    !deletingArtifactIds.value.includes(child.id) &&
+    !deletingArtifactIds.value.includes(parent.id) &&
+    !isDescendantOf(parent.id, child.id)
+  );
 }
 
 function screenToWorld(point: Point): Point {
@@ -389,11 +428,44 @@ function closeTransientUi() {
   selectedArtifactId.value = null;
   activeActionArtifactId.value = null;
   inspectedArtifactId.value = null;
+  dropTargetArtifactId.value = null;
 
   if (!isGenerating.value && !regeneratingArtifactId.value) {
     isDotActive.value = false;
     resetPromptMode();
   }
+}
+
+function getNestingCandidate(artifact: Artifact, screenPoint: Point) {
+  const worldPoint = screenToWorld(screenPoint);
+
+  return topLevelArtifacts.value.find((candidate) => {
+    if (!canNestArtifact(artifact, candidate)) return false;
+
+    const renderHeight = getArtifactRenderHeight(candidate);
+    return (
+      worldPoint.x >= candidate.x &&
+      worldPoint.x <= candidate.x + candidate.width &&
+      worldPoint.y >= candidate.y &&
+      worldPoint.y <= candidate.y + renderHeight
+    );
+  }) ?? null;
+}
+
+function nestArtifact(child: Artifact, parent: Artifact) {
+  child.parentId = parent.id;
+  selectedArtifactId.value = parent.id;
+  activeActionArtifactId.value = null;
+  inspectedArtifactId.value = null;
+  dropTargetArtifactId.value = null;
+}
+
+function extractNestedArtifact(child: Artifact, parent: Artifact, index: number) {
+  child.parentId = undefined;
+  child.x = parent.x + 28 + index * 18;
+  child.y = parent.y + getArtifactRenderHeight(parent) + 24;
+  selectedArtifactId.value = child.id;
+  activeActionArtifactId.value = null;
 }
 
 function handleDotPointerDown(event: PointerEvent) {
@@ -441,7 +513,7 @@ function handleDotPointerUp(event: PointerEvent) {
 }
 
 function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
-  if (deletingArtifactIds.value.includes(artifact.id)) return;
+  if (deletingArtifactIds.value.includes(artifact.id) || artifact.parentId) return;
 
   event.stopPropagation();
   selectedArtifactId.value = artifact.id;
@@ -476,6 +548,10 @@ function handleArtifactPointerMove(event: PointerEvent) {
 
   artifact.x = state.startX + dx;
   artifact.y = state.startY + dy;
+
+  if (state.moved) {
+    dropTargetArtifactId.value = getNestingCandidate(artifact, { x: event.clientX, y: event.clientY })?.id ?? null;
+  }
 }
 
 function handleArtifactPointerUp(event: PointerEvent) {
@@ -483,11 +559,22 @@ function handleArtifactPointerUp(event: PointerEvent) {
   if (!state || state.pointerId !== event.pointerId) return;
 
   (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+
+  const artifact = artifacts.value.find((item) => item.id === state.artifactId);
+  const parent = dropTargetArtifactId.value ? artifacts.value.find((item) => item.id === dropTargetArtifactId.value) : null;
+
   artifactDragState.value = null;
+
+  if (artifact && parent && state.moved && canNestArtifact(artifact, parent)) {
+    nestArtifact(artifact, parent);
+    return;
+  }
+
+  dropTargetArtifactId.value = null;
 }
 
 function handleWorkspacePointerDown(event: PointerEvent) {
-  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel, .deleted-marker, .marker-control')) return;
+  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel, .deleted-marker, .marker-control, .nested-bubbles')) return;
 
   closeTransientUi();
 
@@ -631,6 +718,7 @@ function forkArtifact(artifact: Artifact) {
   fork.x = artifact.x + 48;
   fork.y = artifact.y + 48;
   fork.createdAt = nowLabel();
+  fork.parentId = undefined;
 
   artifacts.value.push(fork);
   selectedArtifactId.value = fork.id;
@@ -639,6 +727,13 @@ function forkArtifact(artifact: Artifact) {
 
 function completeDeleteTransition(artifact: Artifact) {
   const removed = cloneArtifact(artifact);
+  const children = getChildArtifacts(artifact.id);
+
+  children.forEach((child, index) => {
+    child.parentId = undefined;
+    child.x = artifact.x + 32 + index * 34;
+    child.y = artifact.y + getArtifactRenderHeight(artifact) + 34;
+  });
 
   artifacts.value = artifacts.value.filter((item) => item.id !== artifact.id);
   deletingArtifactIds.value = deletingArtifactIds.value.filter((id) => id !== artifact.id);
@@ -649,7 +744,7 @@ function completeDeleteTransition(artifact: Artifact) {
     artifact: removed,
     title: removed.title,
     x: removed.x + removed.width / 2,
-    y: removed.y + removed.height / 2,
+    y: removed.y + getArtifactRenderHeight(removed) / 2,
     createdAt: nowLabel(),
   });
 }
@@ -672,6 +767,7 @@ function deleteArtifact(artifact: Artifact) {
 
 function revitalizeDeletedMarker(marker: DeletedMarker) {
   const restored = cloneArtifact(marker.artifact);
+  restored.parentId = undefined;
   artifacts.value.push(restored);
   deletedMarkers.value = deletedMarkers.value.filter((item) => item.id !== marker.id);
   selectedArtifactId.value = restored.id;
@@ -696,7 +792,7 @@ function closeInspector() {
 function fitAll() {
   const items = [
     { x: dot.value.x - 16, y: dot.value.y - 16, width: 32, height: 32 },
-    ...artifacts.value.map((artifact) => ({ x: artifact.x, y: artifact.y, width: artifact.width, height: artifact.height })),
+    ...topLevelArtifacts.value.map((artifact) => ({ x: artifact.x, y: artifact.y, width: artifact.width, height: getArtifactRenderHeight(artifact) })),
     ...deletedMarkers.value.map((marker) => ({ x: marker.x - 10, y: marker.y - 10, width: 20, height: 20 })),
   ];
 
@@ -730,6 +826,7 @@ function handleKeydown(event: KeyboardEvent) {
     }
     closePrompt();
     activeActionArtifactId.value = null;
+    dropTargetArtifactId.value = null;
   }
 
   if (isTyping) return;
@@ -779,7 +876,7 @@ onUnmounted(() => {
       </button>
 
       <section
-        v-for="artifact in artifacts"
+        v-for="artifact in topLevelArtifacts"
         :key="artifact.id"
         class="artifact-card"
         :class="{
@@ -787,12 +884,14 @@ onUnmounted(() => {
           'artifact-card--selected': selectedArtifactId === artifact.id,
           'artifact-card--regenerating': regeneratingArtifactId === artifact.id,
           'artifact-card--deleting': deletingArtifactIds.includes(artifact.id),
+          'artifact-card--nest-target': dropTargetArtifactId === artifact.id,
+          'artifact-card--has-children': getChildArtifacts(artifact.id).length,
         }"
         :style="{
           left: `${artifact.x}px`,
           top: `${artifact.y}px`,
           width: `${artifact.width}px`,
-          minHeight: `${artifact.height}px`,
+          minHeight: `${getArtifactRenderHeight(artifact)}px`,
         }"
         tabindex="0"
         aria-label="Generated artifact. Drag to move."
@@ -879,6 +978,22 @@ onUnmounted(() => {
             <p>{{ artifact.content.summary }}</p>
           </template>
         </div>
+
+        <div v-if="getChildArtifacts(artifact.id).length" class="nested-bubbles" aria-label="Nested bubbles" @pointerdown.stop>
+          <button
+            v-for="(child, index) in getChildArtifacts(artifact.id)"
+            :key="child.id"
+            class="nested-bubble"
+            type="button"
+            :title="`Open ${child.title}`"
+            @click="extractNestedArtifact(child, artifact, index)"
+          >
+            <span>{{ child.title }}</span>
+            <small v-if="getChildArtifacts(child.id).length">{{ getChildArtifacts(child.id).length }}</small>
+          </button>
+        </div>
+
+        <div v-else-if="dropTargetArtifactId === artifact.id" class="nested-drop-hint">drop inside</div>
       </section>
 
       <button
@@ -925,6 +1040,14 @@ onUnmounted(() => {
         <div>
           <dt>prompt</dt>
           <dd>{{ inspectedArtifact.prompt }}</dd>
+        </div>
+        <div>
+          <dt>parent</dt>
+          <dd>{{ getParentArtifact(inspectedArtifact)?.title ?? 'canvas' }}</dd>
+        </div>
+        <div>
+          <dt>contains</dt>
+          <dd>{{ getChildArtifacts(inspectedArtifact.id).length }}</dd>
         </div>
       </dl>
       <pre>{{ inspectedArtifactRaw }}</pre>

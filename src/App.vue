@@ -1,78 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
-
-type Point = { x: number; y: number };
-type ArtifactKind = 'text' | 'object' | 'image' | 'video' | 'unknown';
-type PromptMode = { type: 'create' } | { type: 'edit'; artifactId: string };
-
-type ArtifactFacet = {
-  label: string;
-  value: string;
-};
-
-type ArtifactContent = {
-  raw: string;
-  markdown?: string;
-  description?: string;
-  tags?: string[];
-  capabilities?: string[];
-  connections?: string[];
-  facets?: ArtifactFacet[];
-  alt?: string;
-  storyboard?: string[];
-  summary?: string;
-};
-
-type Artifact = {
-  id: string;
-  kind: ArtifactKind;
-  title: string;
-  prompt: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  createdAt: string;
-  content: ArtifactContent;
-  parentId?: string;
-};
-
-type GeneratedArtifact = {
-  kind: ArtifactKind;
-  title: string;
-  content: ArtifactContent;
-};
-
-type DeletedMarker = {
-  id: string;
-  artifact: Artifact;
-  title: string;
-  x: number;
-  y: number;
-  createdAt: string;
-};
-
-type DragState = {
-  pointerId: number;
-  startPointerX: number;
-  startPointerY: number;
-  startX: number;
-  startY: number;
-  moved: boolean;
-};
-
-type CameraState = {
-  x: number;
-  y: number;
-  zoom: number;
-};
-
-const ARTIFACT_WIDTH = 320;
-const ARTIFACT_HEIGHT = 230;
-const MIN_ZOOM = 0.35;
-const MAX_ZOOM = 2.4;
-const DELETE_TRANSITION_MS = 560;
-const NEST_EXTRA_HEIGHT = 82;
+import { createArtifactFromPrompt, cloneArtifact, fakeGenerateArtifact, nowLabel } from './artifact-factory';
+import {
+  canNestArtifact as canNestArtifactInTree,
+  getArtifactRenderHeight as getArtifactTreeRenderHeight,
+  getChildArtifacts as getTreeChildArtifacts,
+  getParentArtifact as getTreeParentArtifact,
+} from './artifact-tree';
+import { ARTIFACT_HEIGHT, ARTIFACT_WIDTH, DELETE_TRANSITION_MS, MIN_ZOOM } from './constants';
+import {
+  centerCameraOn as createCenteredCamera,
+  clamp,
+  getViewportSafeWorldPoint,
+  screenToWorld as convertScreenToWorld,
+  worldToScreen as convertWorldToScreen,
+  zoomCameraAt,
+} from './geometry';
+import type { Artifact, CameraState, DeletedMarker, DragState, Point, PromptMode, Viewport } from './types';
 
 const dot = ref<Point>({ x: 0, y: 0 });
 const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
@@ -142,101 +86,44 @@ const inspectedArtifactRaw = computed(() =>
   inspectedArtifact.value ? JSON.stringify(inspectedArtifact.value.content, null, 2) : '',
 );
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function nowLabel() {
-  return new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit' }).format(new Date());
-}
-
-function cloneArtifact(artifact: Artifact): Artifact {
-  return JSON.parse(JSON.stringify(artifact)) as Artifact;
-}
-
-function uniq(values: string[]) {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function getChildArtifacts(parentId: string) {
-  return artifacts.value.filter((artifact) => artifact.parentId === parentId);
-}
-
-function getParentArtifact(artifact: Artifact) {
-  return artifact.parentId ? artifacts.value.find((item) => item.id === artifact.parentId) ?? null : null;
-}
-
-function getArtifactRenderHeight(artifact: Artifact) {
-  return artifact.height + (getChildArtifacts(artifact.id).length ? NEST_EXTRA_HEIGHT : 0);
-}
-
-function isDescendantOf(possibleChildId: string, possibleParentId: string): boolean {
-  let current = artifacts.value.find((artifact) => artifact.id === possibleChildId);
-
-  while (current?.parentId) {
-    if (current.parentId === possibleParentId) return true;
-    current = artifacts.value.find((artifact) => artifact.id === current?.parentId);
-  }
-
-  return false;
-}
-
-function canNestArtifact(child: Artifact, parent: Artifact) {
-  return (
-    child.id !== parent.id &&
-    !child.parentId &&
-    !parent.parentId &&
-    !deletingArtifactIds.value.includes(child.id) &&
-    !deletingArtifactIds.value.includes(parent.id) &&
-    !isDescendantOf(parent.id, child.id)
-  );
+function getViewport(): Viewport {
+  return { width: window.innerWidth, height: window.innerHeight };
 }
 
 function screenToWorld(point: Point): Point {
-  return {
-    x: (point.x - camera.value.x) / camera.value.zoom,
-    y: (point.y - camera.value.y) / camera.value.zoom,
-  };
+  return convertScreenToWorld(point, camera.value);
 }
 
 function worldToScreen(point: Point): Point {
-  return {
-    x: point.x * camera.value.zoom + camera.value.x,
-    y: point.y * camera.value.zoom + camera.value.y,
-  };
+  return convertWorldToScreen(point, camera.value);
 }
 
-function centerCameraOn(point: Point, zoom = camera.value.zoom) {
-  camera.value = {
-    x: window.innerWidth / 2 - point.x * zoom,
-    y: window.innerHeight / 2 - point.y * zoom,
-    zoom,
-  };
+function getChildArtifacts(parentId: string) {
+  return getTreeChildArtifacts(artifacts.value, parentId);
+}
+
+function getParentArtifact(artifact: Artifact) {
+  return getTreeParentArtifact(artifacts.value, artifact);
+}
+
+function getArtifactRenderHeight(artifact: Artifact) {
+  return getArtifactTreeRenderHeight(artifacts.value, artifact);
+}
+
+function canNestArtifact(child: Artifact, parent: Artifact) {
+  return canNestArtifactInTree(artifacts.value, deletingArtifactIds.value, child, parent);
 }
 
 function resetCamera() {
-  centerCameraOn(dot.value, 1);
+  camera.value = createCenteredCamera(dot.value, getViewport(), 1);
 }
 
 function zoomAt(screenPoint: Point, nextZoom: number) {
-  const zoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
-  const worldPoint = screenToWorld(screenPoint);
-
-  camera.value = {
-    x: screenPoint.x - worldPoint.x * zoom,
-    y: screenPoint.y - worldPoint.y * zoom,
-    zoom,
-  };
-}
-
-function getViewportSafeWorldPoint(screenPoint: Point): Point {
-  return screenToWorld({
-    x: clamp(screenPoint.x, 28, window.innerWidth - 28),
-    y: clamp(screenPoint.y, 28, window.innerHeight - 130),
-  });
+  camera.value = zoomCameraAt(screenPoint, nextZoom, camera.value);
 }
 
 function chooseArtifactPosition(seed: Point) {
+  const viewport = getViewport();
   const margin = 28;
   const reservedBottom = 132;
   const gap = 42;
@@ -255,162 +142,12 @@ function chooseArtifactPosition(seed: Point) {
     return (
       screen.x >= margin &&
       screen.y >= margin &&
-      screen.x + width <= window.innerWidth - margin &&
-      screen.y + height <= window.innerHeight - reservedBottom
+      screen.x + width <= viewport.width - margin &&
+      screen.y + height <= viewport.height - reservedBottom
     );
   });
 
-  return fittingCandidate ?? getViewportSafeWorldPoint({ x: margin, y: margin + 24 });
-}
-
-function makeArtifactTitle(value: string) {
-  const clean = value.trim().replace(/\s+/g, ' ');
-  if (!clean) return 'Untitled artifact';
-  return clean.length > 42 ? `${clean.slice(0, 39)}...` : clean;
-}
-
-function inferObjectTags(value: string) {
-  const text = value.toLowerCase();
-  const tags = ['semantic object'];
-
-  if (/\b(list|item|collection|inventory)\b/.test(text)) tags.push('list');
-  if (/\b(game|card|condition|rule|turn|score|player|level)\b/.test(text)) tags.push('game logic');
-  if (/\b(plan|schedule|week|calendar|reminder|routine)\b/.test(text)) tags.push('plan');
-  if (/\b(button|form|screen|page|ui|component|dashboard|modal|widget|vue|react)\b/.test(text)) tags.push('interface');
-  if (/\b(data|table|csv|transform|calculate|number)\b/.test(text)) tags.push('data');
-
-  return uniq(tags).slice(0, 4);
-}
-
-function inferConnections(value: string) {
-  const text = value.toLowerCase();
-  const connections = ['source', 'constraint', 'result'];
-
-  if (/\b(list|item|collection|inventory)\b/.test(text)) connections.push('item', 'quantity', 'place');
-  if (/\b(game|card|condition|rule)\b/.test(text)) connections.push('trigger', 'state', 'target');
-  if (/\b(plan|schedule|week|calendar)\b/.test(text)) connections.push('date', 'task', 'dependency');
-  if (/\b(button|form|screen|page|ui|component)\b/.test(text)) connections.push('input', 'event', 'view');
-
-  return uniq(connections).slice(0, 6);
-}
-
-function detectArtifactKind(value: string, fallback: ArtifactKind = 'unknown'): ArtifactKind {
-  const text = value.toLowerCase();
-
-  if (/\b(image|picture|photo|illustration|logo|icon|poster|visual|wallpaper)\b/.test(text)) return 'image';
-  if (/\b(video|movie|clip|animation|trailer)\b/.test(text)) return 'video';
-  if (/\b(text|copy|poem|story|essay|markdown|explain|write|article|headline)\b/.test(text)) return 'text';
-  if (/\b(component|button|card|form|login|dashboard|widget|ui|vue|react|page|modal|plan|schedule|list|game|condition|rule|data|table|routine)\b/.test(text)) return 'object';
-
-  return fallback;
-}
-
-function createObjectArtifactContent(value: string): ArtifactContent {
-  return {
-    raw: value,
-    description: value,
-    tags: inferObjectTags(value),
-    connections: inferConnections(value),
-    capabilities: ['accepts detail', 'can connect', 'can transform'],
-    facets: [
-      { label: 'role', value: 'semantic object' },
-      { label: 'state', value: 'draft' },
-    ],
-    summary: 'Universal artifact shell. Meaning, capabilities, and connections are model-defined.',
-  };
-}
-
-function fakeGenerateArtifact(value: string, previous?: Artifact): GeneratedArtifact {
-  const kind = detectArtifactKind(value, previous?.kind ?? 'unknown');
-  const title = previous ? makeArtifactTitle(`${previous.title} · ${value}`) : makeArtifactTitle(value);
-
-  if (kind === 'text') {
-    const markdown = previous
-      ? `### ${previous.title}\n\n${value}\n\nThis is the next written version of the artifact. The real generator will preserve intent, voice, and structure.`
-      : `### ${title}\n\n${value}\n\nThis is a structured text artifact placeholder.`;
-
-    return {
-      kind,
-      title,
-      content: {
-        raw: markdown,
-        markdown,
-        tags: ['text'],
-        connections: ['source', 'reference', 'output'],
-        capabilities: ['summarise', 'rewrite', 'connect'],
-        summary: 'Text artifact with markdown preview.',
-      },
-    };
-  }
-
-  if (kind === 'object') {
-    return {
-      kind,
-      title,
-      content: createObjectArtifactContent(value),
-    };
-  }
-
-  if (kind === 'image') {
-    return {
-      kind,
-      title,
-      content: {
-        raw: `Image prompt: ${value}`,
-        description: value,
-        alt: `Generated image placeholder for: ${value}`,
-        tags: ['visual'],
-        connections: ['reference', 'style', 'output'],
-        capabilities: ['describe', 'vary', 'connect'],
-        summary: 'Image artifact placeholder.',
-      },
-    };
-  }
-
-  if (kind === 'video') {
-    return {
-      kind,
-      title,
-      content: {
-        raw: `Video prompt: ${value}`,
-        description: value,
-        tags: ['motion'],
-        connections: ['scene', 'timing', 'audio', 'output'],
-        capabilities: ['storyboard', 'vary', 'connect'],
-        storyboard: ['Opening frame', 'Main motion', 'End frame'],
-        summary: 'Video artifact placeholder with storyboard beats.',
-      },
-    };
-  }
-
-  return {
-    kind,
-    title,
-    content: {
-      raw: value,
-      tags: ['unclassified'],
-      connections: ['source', 'meaning', 'output'],
-      capabilities: ['classify', 'transform', 'connect'],
-      summary: 'Unknown artifact type. This will later be resolved by the model router.',
-    },
-  };
-}
-
-function createArtifactFromPrompt(value: string, position: Point): Artifact {
-  const generated = fakeGenerateArtifact(value);
-
-  return {
-    id: crypto.randomUUID(),
-    kind: generated.kind,
-    title: generated.title,
-    prompt: value,
-    x: position.x,
-    y: position.y,
-    width: ARTIFACT_WIDTH,
-    height: ARTIFACT_HEIGHT,
-    createdAt: nowLabel(),
-    content: generated.content,
-  };
+  return fittingCandidate ?? getViewportSafeWorldPoint({ x: margin, y: margin + 24 }, camera.value, viewport);
 }
 
 function activatePrompt() {
@@ -790,6 +527,7 @@ function closeInspector() {
 }
 
 function fitAll() {
+  const viewport = getViewport();
   const items = [
     { x: dot.value.x - 16, y: dot.value.y - 16, width: 32, height: 32 },
     ...topLevelArtifacts.value.map((artifact) => ({ x: artifact.x, y: artifact.y, width: artifact.width, height: getArtifactRenderHeight(artifact) })),
@@ -803,14 +541,14 @@ function fitAll() {
   const boundsWidth = Math.max(maxX - minX, 1);
   const boundsHeight = Math.max(maxY - minY, 1);
   const zoom = clamp(
-    Math.min((window.innerWidth - 120) / boundsWidth, (window.innerHeight - 220) / boundsHeight),
+    Math.min((viewport.width - 120) / boundsWidth, (viewport.height - 220) / boundsHeight),
     MIN_ZOOM,
     1.25,
   );
 
   camera.value = {
-    x: window.innerWidth / 2 - (minX + boundsWidth / 2) * zoom,
-    y: window.innerHeight / 2 - (minY + boundsHeight / 2) * zoom,
+    x: viewport.width / 2 - (minX + boundsWidth / 2) * zoom,
+    y: viewport.height / 2 - (minY + boundsHeight / 2) * zoom,
     zoom,
   };
 }

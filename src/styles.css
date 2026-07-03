@@ -621,7 +621,7 @@ input {
   right: 18px;
   top: 18px;
   z-index: 26;
-  width: min(380px, calc(100vw - 36px));
+  width: min(420px, calc(100vw - 36px));
   max-height: calc(100vh - 36px);
   overflow: auto;
   padding: 22px;
@@ -633,10 +633,30 @@ input {
   backdrop-filter: blur(22px);
 }
 
-.inspector-panel__close {
+.inspector-panel--dragging {
+  z-index: 31;
+  cursor: grabbing;
+}
+
+.inspector-panel__header {
+  margin: -4px 76px 18px 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.inspector-panel--dragging .inspector-panel__header {
+  cursor: grabbing;
+}
+
+.inspector-panel__actions {
   position: absolute;
   top: 14px;
   right: 14px;
+  display: flex;
+  gap: 8px;
+}
+
+.inspector-panel__icon {
   display: grid;
   width: 30px;
   height: 30px;
@@ -646,6 +666,25 @@ input {
   color: rgba(243, 239, 230, 0.72);
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
+}
+
+.inspector-panel__icon--remove {
+  color: #20160f;
+  border-color: rgba(255, 123, 114, 0.42);
+  background: #ff7b72;
+}
+
+.inspector-panel__icon:hover,
+.inspector-panel__icon:focus-visible {
+  border-color: rgba(255, 188, 117, 0.38);
+  color: #fffaf0;
+  background: rgba(255, 188, 117, 0.12);
+}
+
+.inspector-panel__icon--remove:hover,
+.inspector-panel__icon--remove:focus-visible {
+  color: #20160f;
+  background: #ffbc75;
 }
 
 .inspector-panel__eyebrow {
@@ -658,7 +697,7 @@ input {
 }
 
 .inspector-panel h2 {
-  margin: 0 38px 18px 0;
+  margin: 0;
   color: #fffaf0;
   font-size: 1.15rem;
   line-height: 1.15;
@@ -685,6 +724,47 @@ input {
 
 .inspector-panel dd {
   margin: 0;
+}
+
+.inspector-panel__edit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.inspector-panel__edit input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #fffaf0;
+  background: transparent;
+  font-size: 0.86rem;
+}
+
+.inspector-panel__edit input::placeholder {
+  color: rgba(243, 239, 230, 0.38);
+}
+
+.inspector-panel__edit button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 11px;
+  color: #15110b;
+  background: #ffbc75;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.inspector-panel__edit button:disabled,
+.inspector-panel__edit input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .inspector-panel pre {
@@ -760,14 +840,7 @@ input {
     display: none;
   }
 
-  .canvas-help {
-    bottom: max(18px, env(safe-area-inset-bottom));
-  }
-
-  .inspector-panel {
-    left: 18px;
-    right: 18px;
-    top: 18px;
-    width: auto;
+  .inspector-panel__edit {
+    grid-template-columns: 1fr;
   }
 }

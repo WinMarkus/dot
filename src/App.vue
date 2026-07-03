@@ -173,6 +173,27 @@ function closeTransientUi() {
   }
 }
 
+function isWorkspaceGestureTarget(event: Event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+
+  return !target.closest(
+    '.artifact-card, .seed-dot, .command-bar, .canvas-help, .inspector-panel, .deleted-marker, .marker-control, .nested-bubbles',
+  );
+}
+
+function openPromptAtScreenPoint(point: Point) {
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+
+  selectedArtifactId.value = null;
+  activeActionArtifactId.value = null;
+  inspectedArtifactId.value = null;
+  dropTargetArtifactId.value = null;
+  dot.value = screenToWorld(point);
+  resetPromptMode();
+  activatePrompt();
+}
+
 function getNestingCandidate(artifact: Artifact, screenPoint: Point) {
   const worldPoint = screenToWorld(screenPoint);
 
@@ -311,7 +332,7 @@ function handleArtifactPointerUp(event: PointerEvent) {
 }
 
 function handleWorkspacePointerDown(event: PointerEvent) {
-  if ((event.target as HTMLElement).closest('.command-bar, .canvas-help, .inspector-panel, .deleted-marker, .marker-control, .nested-bubbles')) return;
+  if (!isWorkspaceGestureTarget(event)) return;
 
   closeTransientUi();
 
@@ -350,8 +371,20 @@ function handleWorkspacePointerUp(event: PointerEvent) {
   panState.value = null;
 
   if (!state.moved) {
+    if (event.detail >= 2) {
+      openPromptAtScreenPoint({ x: state.startPointerX, y: state.startPointerY });
+      return;
+    }
+
     dot.value = screenToWorld({ x: state.startPointerX, y: state.startPointerY });
   }
+}
+
+function handleWorkspaceDoubleClick(event: MouseEvent) {
+  if (!isWorkspaceGestureTarget(event)) return;
+
+  event.preventDefault();
+  openPromptAtScreenPoint({ x: event.clientX, y: event.clientY });
 }
 
 function handleWheel(event: WheelEvent) {
@@ -593,6 +626,7 @@ onUnmounted(() => {
     @pointerdown="handleWorkspacePointerDown"
     @pointermove="handleWorkspacePointerMove"
     @pointerup="handleWorkspacePointerUp"
+    @dblclick="handleWorkspaceDoubleClick"
     @wheel="handleWheel"
   >
     <div class="ambient ambient--one" />

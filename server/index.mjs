@@ -198,6 +198,14 @@ function extractJsonObject(text) {
   return trimmed;
 }
 
+function logGeneration(event, data = {}) {
+  console.info(`[dot:generate] ${event}`, JSON.stringify(data));
+}
+
+function logGenerationError(event, data = {}) {
+  console.error(`[dot:generate] ${event}`, JSON.stringify(data));
+}
+
 function buildOpenRouterRequestBody(model, body, responseFormat) {
   return {
     model,
@@ -211,7 +219,15 @@ function buildOpenRouterRequestBody(model, body, responseFormat) {
   };
 }
 
-async function requestOpenRouter(apiKey, model, body, responseFormat) {
+async function requestOpenRouter(apiKey, model, body, responseFormat, providerMode) {
+  logGeneration('openrouter_attempt', {
+    model,
+    providerMode,
+    promptLength: safeString(body?.prompt).length,
+    mode: safeString(body?.mode, 'create'),
+    canvasArtifacts: safeArray(body?.canvasContext?.artifacts).length,
+  });
+
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -225,12 +241,20 @@ async function requestOpenRouter(apiKey, model, body, responseFormat) {
 
   if (!response.ok) {
     const detail = await response.text();
+    logGenerationError('openrouter_failure', {
+      model,
+      providerMode,
+      status: response.status,
+      detail: detail.slice(0, 900),
+    });
+
     const error = new Error(`OpenRouter request failed: ${response.status}`);
     error.statusCode = response.status;
     error.detail = detail.slice(0, 2000);
     throw error;
   }
 
+  logGeneration('openrouter_success', { model, providerMode, status: response.status });
   return response.json();
 }
 
@@ -243,8 +267,17 @@ function parseOpenRouterPayload(payload, model, providerMode) {
   }
 
   const parsed = JSON.parse(extractJsonObject(content));
+  const artifacts = safeArray(parsed.artifacts).slice(0, 4).map((artifact) => normalizeArtifact(artifact));
+
+  logGeneration('openrouter_parsed', {
+    model: payload.model || model,
+    providerMode,
+    artifactCount: artifacts.length,
+    totalTokens: payload?.usage?.total_tokens ?? null,
+  });
+
   return {
-    artifacts: safeArray(parsed.artifacts).slice(0, 4).map((artifact) => normalizeArtifact(artifact)),
+    artifacts,
     provider: `openrouter:${providerMode}`,
     model: payload.model || model,
     usage: payload.usage || null,
@@ -270,13 +303,19 @@ async function callOpenRouter(body) {
   };
 
   try {
-    const payload = await requestOpenRouter(apiKey, model, body, strictJsonSchemaFormat);
+    const payload = await requestOpenRouter(apiKey, model, body, strictJsonSchemaFormat, 'json_schema');
     return parseOpenRouterPayload(payload, model, 'json_schema');
   } catch (schemaError) {
     if (schemaError.statusCode !== 400) throw schemaError;
 
+    logGeneration('openrouter_retry', {
+      model,
+      from: 'json_schema',
+      to: 'json_object',
+    });
+
     try {
-      const payload = await requestOpenRouter(apiKey, model, body, { type: 'json_object' });
+      const payload = await requestOpenRouter(apiKey, model, body, { type: 'json_object' }, 'json_object');
       return parseOpenRouterPayload(payload, model, 'json_object');
     } catch (jsonObjectError) {
       jsonObjectError.detail = JSON.stringify({
@@ -293,11 +332,21 @@ app.get('/api/health', (_request, response) => {
 });
 
 app.post('/api/generate', async (request, response) => {
+  const startedAt = Date.now();
+  const prompt = safeString(request.body?.prompt).trim();
+  const mode = safeString(request.body?.mode, 'create');
+
+  logGeneration('request_start', {
+    mode,
+    promptLength: prompt.length,
+    selectedKind: safeString(request.body?.selectedArtifact?.kind, null),
+    canvasArtifacts: safeArray(request.body?.canvasContext?.artifacts).length,
+  });
+
   try {
-    const prompt = safeString(request.body?.prompt).trim();
-    const mode = safeString(request.body?.mode, 'create');
     if (!prompt && mode !== 'regenerate') {
       response.status(400).json({ error: 'Prompt is required' });
+      logGenerationError('request_rejected', { reason: 'missing_prompt' });
       return;
     }
 
@@ -309,8 +358,21 @@ app.post('/api/generate', async (request, response) => {
     });
 
     response.json(result);
+    logGeneration('request_success', {
+      durationMs: Date.now() - startedAt,
+      provider: result.provider,
+      model: result.model,
+      artifactCount: result.artifacts.length,
+    });
   } catch (error) {
     const statusCode = Number(error.statusCode ?? 500);
+    logGenerationError('request_failure', {
+      durationMs: Date.now() - startedAt,
+      statusCode,
+      message: error.message || 'Generation failed',
+      detail: safeString(error.detail).slice(0, 900),
+    });
+
     response.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
       error: error.message || 'Generation failed',
       detail: error.detail || null,

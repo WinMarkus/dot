@@ -1,13 +1,19 @@
 .inspector-panel {
+  --inspector-origin-local-x: calc(100% - 72px);
+  --inspector-origin-local-y: -36px;
   animation: inspector-genie-out 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  transform-origin: calc(100% - 72px) -36px;
+  transform-origin: var(--inspector-origin-local-x) var(--inspector-origin-local-y);
   will-change: transform, opacity, border-radius, filter;
+}
+
+.inspector-panel--from-icon {
+  transform-origin: var(--inspector-origin-local-x) var(--inspector-origin-local-y);
 }
 
 .inspector-panel::after {
   position: absolute;
-  top: -34px;
-  right: 66px;
+  left: calc(var(--inspector-origin-local-x) - 6px);
+  top: calc(var(--inspector-origin-local-y) - 2px);
   width: 12px;
   height: 42px;
   border-radius: 999px;
@@ -31,28 +37,28 @@
     opacity: 0;
     border-radius: 999px;
     filter: blur(12px);
-    transform: translate(42px, -42px) scale(0.08, 0.02) skewX(-12deg);
+    transform: scale(0.08, 0.02) skewX(-12deg);
   }
 
   42% {
     opacity: 0.92;
     border-radius: 48px;
     filter: blur(4px);
-    transform: translate(12px, -18px) scale(0.62, 1.06) skewX(5deg);
+    transform: scale(0.62, 1.06) skewX(5deg);
   }
 
   72% {
     opacity: 1;
     border-radius: 34px;
     filter: blur(0);
-    transform: translate(-2px, 2px) scale(1.02, 0.98) skewX(-1deg);
+    transform: scale(1.02, 0.98) skewX(-1deg);
   }
 
   100% {
     opacity: 1;
     border-radius: 28px;
     filter: blur(0);
-    transform: translate(0, 0) scale(1) skewX(0);
+    transform: scale(1) skewX(0);
   }
 }
 
@@ -75,7 +81,7 @@
 
 @media (max-width: 760px) {
   .inspector-panel {
-    transform-origin: 50% 100%;
+    transform-origin: var(--inspector-origin-local-x, 50%) var(--inspector-origin-local-y, 100%);
     animation-name: inspector-genie-sheet-out;
   }
 
@@ -88,19 +94,19 @@
   0% {
     opacity: 0;
     filter: blur(10px);
-    transform: translateY(34px) scale(0.14, 0.04);
+    transform: scale(0.14, 0.04);
   }
 
   48% {
     opacity: 0.95;
     filter: blur(3px);
-    transform: translateY(8px) scale(0.78, 1.04);
+    transform: scale(0.78, 1.04);
   }
 
   100% {
     opacity: 1;
     filter: blur(0);
-    transform: translateY(0) scale(1);
+    transform: scale(1);
   }
 }
 

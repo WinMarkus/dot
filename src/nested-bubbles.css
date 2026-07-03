@@ -1,4 +1,5 @@
 @import './fork-split.css';
+@import './ai-artifacts.css';
 
 .artifact-card--nest-target {
   border-color: rgba(255, 188, 117, 0.46);

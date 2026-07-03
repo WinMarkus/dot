@@ -5,13 +5,27 @@ export type Viewport = {
   height: number;
 };
 
-export type ArtifactKind = 'text' | 'object' | 'image' | 'video' | 'unknown';
+export type ArtifactKind = 'text' | 'object' | 'image' | 'video' | 'component' | 'unknown';
 
 export type PromptMode = { type: 'create' } | { type: 'edit'; artifactId: string };
 
 export type ArtifactFacet = {
   label: string;
   value: string;
+};
+
+export type ArtifactPortType = 'text' | 'image' | 'video' | 'data' | 'event' | 'component' | 'any';
+
+export type ArtifactPort = {
+  id: string;
+  label: string;
+  type: ArtifactPortType;
+  purpose: string;
+};
+
+export type ArtifactPorts = {
+  inputs: ArtifactPort[];
+  outputs: ArtifactPort[];
 };
 
 export type ArtifactContent = {
@@ -25,6 +39,15 @@ export type ArtifactContent = {
   alt?: string;
   storyboard?: string[];
   summary?: string;
+  purpose?: string;
+  imagePrompt?: string;
+  html?: string;
+  css?: string;
+  js?: string;
+  data?: Record<string, unknown>;
+  ports?: ArtifactPorts;
+  provider?: string;
+  model?: string;
 };
 
 export type Artifact = {
@@ -44,7 +67,11 @@ export type Artifact = {
 export type GeneratedArtifact = {
   kind: ArtifactKind;
   title: string;
+  purpose?: string;
+  summary?: string;
   content: ArtifactContent;
+  ports?: ArtifactPorts;
+  children?: GeneratedArtifact[];
 };
 
 export type DeletedMarker = {

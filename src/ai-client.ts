@@ -16,6 +16,7 @@ export type CanvasArtifactContext = {
 export type GenerateArtifactsRequest = {
   prompt: string;
   mode: GenerateMode;
+  preferredKind?: ArtifactKind | null;
   selectedArtifact?: Artifact | null;
   canvasContext: {
     artifacts: CanvasArtifactContext[];

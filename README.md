@@ -20,11 +20,16 @@ A minimal generative creation canvas prototype.
 - tap the action dot on touch devices to toggle action sub-dots
 - action sub-dots currently support inspect, prompt, fork, and delete
 - inspect opens a lightweight artifact inspector
+- the inspector animates out of the clicked inspect icon
 - on mobile the inspector behaves as a bottom sheet
 - prompt reopens the bottom prompt bar in artifact-editing mode
 - in edit mode, submitting an empty prompt regenerates the artifact from its existing prompt
 - in edit mode, typing an instruction changes the artifact
 - fork duplicates the artifact nearby
+- top-level artifacts can be dragged into other top-level artifacts
+- a parent artifact grows and shows contained artifacts as mini-bubbles
+- clicking a mini-bubble extracts it back to the canvas
+- inspector shows parent and child-count information
 - delete smoothly collapses the artifact into a small red deleted marker
 - tapping a deleted marker revitalises the artifact at its original position
 - deleted markers can be cleared with the clear deleted dots control

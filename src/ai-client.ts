@@ -1,13 +1,24 @@
-import type { Artifact, GeneratedArtifact } from './types';
+import type { Artifact, ArtifactKind, ArtifactPorts, GeneratedArtifact } from './types';
 
 export type GenerateMode = 'create' | 'edit' | 'regenerate';
+
+export type CanvasArtifactContext = {
+  id: string;
+  kind: ArtifactKind;
+  title: string;
+  prompt: string;
+  parentId: string | null;
+  purpose: string;
+  summary: string;
+  ports: ArtifactPorts;
+};
 
 export type GenerateArtifactsRequest = {
   prompt: string;
   mode: GenerateMode;
   selectedArtifact?: Artifact | null;
   canvasContext: {
-    artifacts: Artifact[];
+    artifacts: CanvasArtifactContext[];
   };
 };
 

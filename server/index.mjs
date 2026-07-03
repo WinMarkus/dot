@@ -89,6 +89,33 @@ function buildSystemPrompt() {
 
 Do not answer the user directly. Create one or more living artifacts that can be rendered as bubbles on a canvas.
 
+Return only valid JSON with this shape:
+{
+  "artifacts": [
+    {
+      "kind": "text | object | image | video | component",
+      "title": "short title",
+      "purpose": "why this object exists",
+      "summary": "how it should be understood on the canvas",
+      "content": {
+        "text": "",
+        "description": "",
+        "imagePrompt": "",
+        "storyboard": [],
+        "html": "",
+        "css": "",
+        "js": "",
+        "data": {}
+      },
+      "ports": {
+        "inputs": [{ "id": "input_1", "label": "input", "type": "text | image | video | data | event | component | any", "purpose": "why this input exists" }],
+        "outputs": [{ "id": "output_1", "label": "output", "type": "text | image | video | data | event | component | any", "purpose": "why this output exists" }]
+      },
+      "children": []
+    }
+  ]
+}
+
 Each artifact must have:
 - a concrete kind: text, object, image, video, or component
 - a short title
@@ -107,8 +134,7 @@ Kind rules:
 
 For broad prompts, create a small useful structure with children.
 For concrete prompts, create one strong artifact.
-Prefer obvious usefulness over cleverness.
-Return only JSON matching the schema.`;
+Prefer obvious usefulness over cleverness.`;
 }
 
 function safeString(value, fallback = '') {
@@ -172,16 +198,20 @@ function extractJsonObject(text) {
   return trimmed;
 }
 
-async function callOpenRouter(body) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    const error = new Error('OPENROUTER_API_KEY is not configured');
-    error.statusCode = 503;
-    throw error;
-  }
+function buildOpenRouterRequestBody(model, body, responseFormat) {
+  return {
+    model,
+    messages: [
+      { role: 'system', content: buildSystemPrompt() },
+      { role: 'user', content: JSON.stringify(body) },
+    ],
+    response_format: responseFormat,
+    temperature: 0.72,
+    max_tokens: 3200,
+  };
+}
 
-  const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
-
+async function requestOpenRouter(apiKey, model, body, responseFormat) {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -190,34 +220,21 @@ async function callOpenRouter(body) {
       'HTTP-Referer': process.env.PUBLIC_APP_URL || 'http://localhost:3000',
       'X-Title': 'Dot',
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: buildSystemPrompt() },
-        { role: 'user', content: JSON.stringify(body) },
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'dot_artifact_response',
-          strict: true,
-          schema: responseSchema,
-        },
-      },
-      temperature: 0.72,
-      max_tokens: 3200,
-    }),
+    body: JSON.stringify(buildOpenRouterRequestBody(model, body, responseFormat)),
   });
 
   if (!response.ok) {
     const detail = await response.text();
     const error = new Error(`OpenRouter request failed: ${response.status}`);
     error.statusCode = response.status;
-    error.detail = detail.slice(0, 1200);
+    error.detail = detail.slice(0, 2000);
     throw error;
   }
 
-  const payload = await response.json();
+  return response.json();
+}
+
+function parseOpenRouterPayload(payload, model, providerMode) {
   const content = payload?.choices?.[0]?.message?.content;
   if (typeof content !== 'string') {
     const error = new Error('OpenRouter response did not contain text content');
@@ -228,10 +245,47 @@ async function callOpenRouter(body) {
   const parsed = JSON.parse(extractJsonObject(content));
   return {
     artifacts: safeArray(parsed.artifacts).slice(0, 4).map((artifact) => normalizeArtifact(artifact)),
-    provider: 'openrouter',
+    provider: `openrouter:${providerMode}`,
     model: payload.model || model,
     usage: payload.usage || null,
   };
+}
+
+async function callOpenRouter(body) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    const error = new Error('OPENROUTER_API_KEY is not configured');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+  const strictJsonSchemaFormat = {
+    type: 'json_schema',
+    json_schema: {
+      name: 'dot_artifact_response',
+      strict: true,
+      schema: responseSchema,
+    },
+  };
+
+  try {
+    const payload = await requestOpenRouter(apiKey, model, body, strictJsonSchemaFormat);
+    return parseOpenRouterPayload(payload, model, 'json_schema');
+  } catch (schemaError) {
+    if (schemaError.statusCode !== 400) throw schemaError;
+
+    try {
+      const payload = await requestOpenRouter(apiKey, model, body, { type: 'json_object' });
+      return parseOpenRouterPayload(payload, model, 'json_object');
+    } catch (jsonObjectError) {
+      jsonObjectError.detail = JSON.stringify({
+        jsonSchemaError: schemaError.detail || schemaError.message,
+        jsonObjectError: jsonObjectError.detail || jsonObjectError.message,
+      }).slice(0, 2400);
+      throw jsonObjectError;
+    }
+  }
 }
 
 app.get('/api/health', (_request, response) => {

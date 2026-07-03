@@ -30,6 +30,7 @@ export type ArtifactPorts = {
 
 export type ArtifactContent = {
   raw: string;
+  text?: string;
   markdown?: string;
   description?: string;
   tags?: string[];

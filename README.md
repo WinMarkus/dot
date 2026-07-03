@@ -27,8 +27,9 @@ A minimal generative creation canvas prototype.
 - in edit mode, typing an instruction changes the artifact
 - fork duplicates the artifact nearby
 - top-level artifacts can be dragged into other top-level artifacts
-- a parent artifact grows and shows contained artifacts as mini-bubbles
-- clicking a mini-bubble extracts it back to the canvas
+- a parent artifact grows and shows contained artifacts as floating round inner bubbles
+- inner bubbles show their first letter and animate while the parent is dragged
+- clicking an inner bubble extracts it back to the canvas
 - inspector shows parent and child-count information
 - delete smoothly collapses the artifact into a small red deleted marker
 - tapping a deleted marker revitalises the artifact at its original position

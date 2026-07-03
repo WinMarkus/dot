@@ -26,6 +26,8 @@ const regeneratingArtifactId = ref<string | null>(null);
 const prompt = ref('');
 const promptMode = ref<PromptMode>({ type: 'create' });
 const promptInput = ref<HTMLInputElement | null>(null);
+const inspectorPanel = ref<HTMLElement | null>(null);
+const inspectorEditPrompt = ref('');
 
 const artifacts = ref<Artifact[]>([]);
 const deletingArtifactIds = ref<string[]>([]);
@@ -40,6 +42,8 @@ const dropTargetArtifactId = ref<string | null>(null);
 const dotDragState = ref<DragState | null>(null);
 const artifactDragState = ref<(DragState & { artifactId: string }) | null>(null);
 const deletedMarkerDragState = ref<(DragState & { markerId: string }) | null>(null);
+const inspectorDragState = ref<DragState | null>(null);
+const inspectorPosition = ref<Point | null>(null);
 const panState = ref<DragState | null>(null);
 
 const dotClass = computed(() => ({
@@ -73,11 +77,19 @@ const promptActionLabel = computed(() => {
   return isGenerating.value ? 'creating' : 'create';
 });
 
+const inspectorEditActionLabel = computed(() => {
+  if (regeneratingArtifactId.value) return 'regenerating';
+  if (isGenerating.value) return 'changing';
+  return inspectorEditPrompt.value.trim() ? 'change' : 'regenerate';
+});
+
 const isPromptSubmitDisabled = computed(() => {
   if (isGenerating.value || regeneratingArtifactId.value) return true;
   if (promptMode.value.type === 'create') return !prompt.value.trim();
   return false;
 });
+
+const isInspectorEditDisabled = computed(() => isGenerating.value || Boolean(regeneratingArtifactId.value));
 
 const inspectedArtifact = computed(() =>
   artifacts.value.find((artifact) => artifact.id === inspectedArtifactId.value) ?? null,
@@ -86,6 +98,16 @@ const inspectedArtifact = computed(() =>
 const inspectedArtifactRaw = computed(() =>
   inspectedArtifact.value ? JSON.stringify(inspectedArtifact.value.content, null, 2) : '',
 );
+
+const inspectorStyle = computed(() => {
+  if (!inspectorPosition.value) return {};
+
+  return {
+    left: `${inspectorPosition.value.x}px`,
+    top: `${inspectorPosition.value.y}px`,
+    right: 'auto',
+  };
+});
 
 function getViewport(): Viewport {
   return { width: window.innerWidth, height: window.innerHeight };
@@ -121,6 +143,19 @@ function resetCamera() {
 
 function zoomAt(screenPoint: Point, nextZoom: number) {
   camera.value = zoomCameraAt(screenPoint, nextZoom, camera.value);
+}
+
+function clampInspectorPosition(position: Point): Point {
+  const viewport = getViewport();
+  const rect = inspectorPanel.value?.getBoundingClientRect();
+  const width = rect?.width ?? Math.min(380, viewport.width - 36);
+  const height = Math.min(rect?.height ?? 520, viewport.height - 24);
+  const margin = 12;
+
+  return {
+    x: clamp(position.x, margin, Math.max(margin, viewport.width - width - margin)),
+    y: clamp(position.y, margin, Math.max(margin, viewport.height - height - margin)),
+  };
 }
 
 function chooseArtifactPosition(seed: Point) {
@@ -167,6 +202,7 @@ function closeTransientUi() {
   activeActionArtifactId.value = null;
   inspectedArtifactId.value = null;
   dropTargetArtifactId.value = null;
+  inspectorEditPrompt.value = '';
 
   if (!isGenerating.value && !regeneratingArtifactId.value) {
     isDotActive.value = false;
@@ -190,6 +226,7 @@ function openPromptAtScreenPoint(point: Point) {
   activeActionArtifactId.value = null;
   inspectedArtifactId.value = null;
   dropTargetArtifactId.value = null;
+  inspectorEditPrompt.value = '';
   dot.value = screenToWorld(point);
   resetPromptMode();
   activatePrompt();
@@ -217,6 +254,7 @@ function nestArtifact(child: Artifact, parent: Artifact) {
   activeActionArtifactId.value = null;
   inspectedArtifactId.value = null;
   dropTargetArtifactId.value = null;
+  inspectorEditPrompt.value = '';
 }
 
 function extractNestedArtifact(child: Artifact, parent: Artifact, index: number) {
@@ -379,6 +417,47 @@ function handleDeletedMarkerPointerUp(event: PointerEvent, marker: DeletedMarker
   }
 }
 
+function handleInspectorPointerDown(event: PointerEvent) {
+  event.stopPropagation();
+
+  const rect = inspectorPanel.value?.getBoundingClientRect();
+  if (!rect) return;
+
+  const target = event.currentTarget as HTMLElement;
+  target.setPointerCapture(event.pointerId);
+
+  inspectorDragState.value = {
+    pointerId: event.pointerId,
+    startPointerX: event.clientX,
+    startPointerY: event.clientY,
+    startX: rect.left,
+    startY: rect.top,
+    moved: false,
+  };
+}
+
+function handleInspectorPointerMove(event: PointerEvent) {
+  const state = inspectorDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  const dx = event.clientX - state.startPointerX;
+  const dy = event.clientY - state.startPointerY;
+
+  if (Math.abs(dx) + Math.abs(dy) > 4) {
+    state.moved = true;
+  }
+
+  inspectorPosition.value = clampInspectorPosition({ x: state.startX + dx, y: state.startY + dy });
+}
+
+function handleInspectorPointerUp(event: PointerEvent) {
+  const state = inspectorDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+  inspectorDragState.value = null;
+}
+
 function handleWorkspacePointerDown(event: PointerEvent) {
   if (!isWorkspaceGestureTarget(event)) return;
 
@@ -509,12 +588,43 @@ async function submitPrompt() {
   resetPromptMode();
 }
 
+async function submitInspectorEdit() {
+  const artifact = inspectedArtifact.value;
+  if (!artifact || isGenerating.value || regeneratingArtifactId.value) return;
+
+  const value = inspectorEditPrompt.value.trim();
+
+  if (!value) {
+    await regenerateArtifact(artifact);
+    return;
+  }
+
+  isGenerating.value = true;
+  activeActionArtifactId.value = null;
+
+  await new Promise((resolve) => window.setTimeout(resolve, 850));
+
+  const current = artifacts.value.find((item) => item.id === artifact.id);
+  if (current) {
+    const generated = fakeGenerateArtifact(value, current);
+    current.kind = generated.kind;
+    current.title = generated.title;
+    current.prompt = value;
+    current.content = generated.content;
+    selectedArtifactId.value = current.id;
+    inspectorEditPrompt.value = '';
+  }
+
+  isGenerating.value = false;
+}
+
 function inspectArtifact(artifact: Artifact) {
   if (deletingArtifactIds.value.includes(artifact.id)) return;
 
   inspectedArtifactId.value = artifact.id;
   selectedArtifactId.value = artifact.id;
   activeActionArtifactId.value = null;
+  inspectorEditPrompt.value = '';
 }
 
 function startPromptArtifact(artifact: Artifact) {
@@ -577,6 +687,7 @@ function deleteArtifact(artifact: Artifact) {
 
   if (inspectedArtifactId.value === artifact.id) {
     inspectedArtifactId.value = null;
+    inspectorEditPrompt.value = '';
   }
 
   const timerId = window.setTimeout(() => completeDeleteTransition(artifact), DELETE_TRANSITION_MS);
@@ -605,6 +716,8 @@ function toggleArtifactActions(artifact: Artifact) {
 
 function closeInspector() {
   inspectedArtifactId.value = null;
+  inspectorEditPrompt.value = '';
+  inspectorDragState.value = null;
 }
 
 function fitAll() {
@@ -743,7 +856,7 @@ onUnmounted(() => {
           <button class="artifact-action artifact-action--fork" type="button" data-label="fork" aria-label="Fork artifact" @click="forkArtifact(artifact)">
             ⟡
           </button>
-          <button class="artifact-action artifact-action--delete" type="button" data-label="delete" aria-label="Delete artifact" @click="deleteArtifact(artifact)">
+          <button class="artifact-action artifact-action--delete" type="button" data-label="delete" aria-label="Remove artifact" @click="deleteArtifact(artifact)">
             ×
           </button>
         </div>
@@ -846,10 +959,39 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <aside v-if="inspectedArtifact" class="inspector-panel" aria-label="Artifact inspector" @pointerdown.stop>
-      <button class="inspector-panel__close" type="button" aria-label="Close inspector" @click="closeInspector">×</button>
-      <div class="inspector-panel__eyebrow">inspect</div>
-      <h2>{{ inspectedArtifact.title }}</h2>
+    <aside
+      v-if="inspectedArtifact"
+      ref="inspectorPanel"
+      class="inspector-panel"
+      :class="{ 'inspector-panel--dragging': Boolean(inspectorDragState) }"
+      :style="inspectorStyle"
+      aria-label="Artifact inspector"
+      @pointerdown.stop
+    >
+      <div class="inspector-panel__actions" @pointerdown.stop>
+        <button
+          class="inspector-panel__icon inspector-panel__icon--remove"
+          type="button"
+          aria-label="Remove artifact"
+          title="Remove artifact"
+          @click="deleteArtifact(inspectedArtifact)"
+        >
+          ×
+        </button>
+        <button class="inspector-panel__icon" type="button" aria-label="Close inspector" @click="closeInspector">×</button>
+      </div>
+
+      <div
+        class="inspector-panel__header"
+        @pointerdown="handleInspectorPointerDown"
+        @pointermove="handleInspectorPointerMove"
+        @pointerup="handleInspectorPointerUp"
+        @pointercancel="handleInspectorPointerUp"
+      >
+        <div class="inspector-panel__eyebrow">inspect</div>
+        <h2>{{ inspectedArtifact.title }}</h2>
+      </div>
+
       <dl>
         <div>
           <dt>type</dt>
@@ -872,10 +1014,21 @@ onUnmounted(() => {
           <dd>{{ getChildArtifacts(inspectedArtifact.id).length }}</dd>
         </div>
       </dl>
+
+      <form class="inspector-panel__edit" @submit.prevent="submitInspectorEdit">
+        <input
+          v-model="inspectorEditPrompt"
+          :disabled="isInspectorEditDisabled"
+          type="text"
+          placeholder="change this artifact, or leave empty to regenerate"
+          autocomplete="off"
+        />
+        <button type="submit" :disabled="isInspectorEditDisabled">
+          {{ inspectorEditActionLabel }}
+        </button>
+      </form>
+
       <pre>{{ inspectedArtifactRaw }}</pre>
-      <button class="inspector-panel__delete" type="button" @click="deleteArtifact(inspectedArtifact)">
-        delete artifact
-      </button>
     </aside>
 
     <form class="command-bar" :class="{ 'command-bar--visible': isDotActive || isGenerating }" @submit.prevent="submitPrompt">

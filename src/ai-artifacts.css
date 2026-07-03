@@ -1,0 +1,48 @@
+.component-frame {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(142, 255, 135, 0.12), transparent 42%),
+    rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.18);
+}
+
+.artifact-content--component {
+  min-height: 150px;
+}
+
+.generation-status {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 18;
+  max-width: min(320px, calc(100vw - 36px));
+  overflow: hidden;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 188, 117, 0.18);
+  border-radius: 999px;
+  color: rgba(255, 250, 240, 0.62);
+  background: rgba(19, 19, 16, 0.52);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .component-frame {
+    min-height: 170px;
+  }
+
+  .generation-status {
+    right: 14px;
+    bottom: 58px;
+  }
+}

@@ -47,6 +47,7 @@ A minimal generative creation canvas prototype.
 - deleted markers can be cleared with the clear deleted dots control
 - closed bubbles preview their content: images render as glossy orbs, components show a live scaled-down miniature, text shows its words fading toward the edge, videos show the play button, objects show their tag chips
 - the bottom-right status pill opens a model picker: choose the OpenRouter model for artifact generation and image generation separately (curated live from the OpenRouter catalog, persisted in localStorage)
+- three themes — nature (default), technical, space — switched via the small orbs next to the bottom-left help dot and remembered per browser; every color derives from theme tokens in `src/themes.css`
 - canvas controls live behind the bottom-left help dot
 - drag the background to pan the camera
 - mouse wheel zooms the camera

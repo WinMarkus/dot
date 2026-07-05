@@ -1,9 +1,9 @@
 .artifact-card--nest-target {
-  border-color: rgba(255, 188, 117, 0.46);
+  border-color: rgba(var(--c-warm), 0.46);
   box-shadow:
     0 30px 90px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(255, 188, 117, 0.18),
-    0 0 42px rgba(255, 188, 117, 0.2);
+    0 0 0 1px rgba(var(--c-warm), 0.18),
+    0 0 42px rgba(var(--c-warm), 0.2);
   transform: scale(1.025);
   transition:
     min-height 220ms ease,
@@ -38,15 +38,15 @@
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  color: rgba(255, 250, 240, 0.88);
+  color: rgba(var(--c-ink), 0.88);
   background:
     radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.2), transparent 28%),
-    radial-gradient(circle at 70% 72%, rgba(142, 255, 135, 0.1), transparent 40%),
+    radial-gradient(circle at 70% 72%, rgba(var(--c-life), 0.1), transparent 40%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.035)),
     rgba(255, 255, 255, 0.045);
   box-shadow:
     0 10px 26px rgba(0, 0, 0, 0.24),
-    inset 0 0 16px rgba(142, 255, 135, 0.04);
+    inset 0 0 16px rgba(var(--c-life), 0.04);
   cursor: pointer;
   font-weight: 900;
   pointer-events: auto;
@@ -72,13 +72,13 @@
 
 .nested-bubble:hover,
 .nested-bubble:focus-visible {
-  border-color: rgba(255, 188, 117, 0.44);
+  border-color: rgba(var(--c-warm), 0.44);
   background:
     radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.24), transparent 28%),
-    rgba(255, 188, 117, 0.14);
+    rgba(var(--c-warm), 0.14);
   box-shadow:
     0 12px 30px rgba(0, 0, 0, 0.26),
-    0 0 22px rgba(255, 188, 117, 0.18);
+    0 0 22px rgba(var(--c-warm), 0.18);
   scale: 1.08;
 }
 
@@ -86,7 +86,7 @@
   display: block;
   width: 1ch;
   overflow: hidden;
-  color: rgba(255, 250, 240, 0.9);
+  color: rgba(var(--c-ink), 0.9);
   font-size: 0.94rem;
   line-height: 1;
   text-align: left;

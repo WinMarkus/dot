@@ -26,11 +26,11 @@
 
 .generation-status--button:hover,
 .generation-status--button[aria-expanded="true"] {
-  border-color: rgba(255, 188, 117, 0.44);
-  color: rgba(255, 250, 240, 0.92);
+  border-color: rgba(var(--c-warm), 0.44);
+  color: rgba(var(--c-ink), 0.92);
   box-shadow:
     0 16px 42px rgba(0, 0, 0, 0.22),
-    0 0 22px rgba(255, 188, 117, 0.16);
+    0 0 22px rgba(var(--c-warm), 0.16);
 }
 
 .model-picker {
@@ -46,9 +46,9 @@
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
   padding: 14px;
-  border: 1px solid rgba(255, 188, 117, 0.18);
+  border: 1px solid rgba(var(--c-warm), 0.18);
   border-radius: 24px;
-  background: rgba(19, 19, 16, 0.88);
+  background: rgba(var(--c-deep), 0.88);
   box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
   backdrop-filter: blur(18px);
 }
@@ -60,7 +60,7 @@
 
 .model-picker__group > small {
   margin: 0 10px 4px;
-  color: rgba(255, 250, 240, 0.48);
+  color: rgba(var(--c-ink), 0.48);
   font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -75,7 +75,7 @@
   padding: 7px 10px;
   border: 1px solid transparent;
   border-radius: 12px;
-  color: rgba(255, 250, 240, 0.85);
+  color: rgba(var(--c-ink), 0.85);
   background: transparent;
   cursor: pointer;
   font-family: inherit;
@@ -99,14 +99,14 @@
 }
 
 .model-picker__option--active {
-  border-color: rgba(255, 188, 117, 0.4);
-  color: #ffdcae;
-  background: rgba(255, 188, 117, 0.12);
+  border-color: rgba(var(--c-warm), 0.4);
+  color: rgb(var(--c-spark));
+  background: rgba(var(--c-warm), 0.12);
 }
 
 .model-picker__option small {
   flex-shrink: 0;
-  color: rgba(255, 250, 240, 0.45);
+  color: rgba(var(--c-ink), 0.45);
   font-size: 0.64rem;
   font-weight: 700;
 }
@@ -114,7 +114,7 @@
 .model-picker__empty {
   margin: 0;
   padding: 4px 10px;
-  color: rgba(255, 250, 240, 0.55);
+  color: rgba(var(--c-ink), 0.55);
   font-size: 0.72rem;
 }
 

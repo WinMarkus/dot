@@ -1,0 +1,100 @@
+/* Theme palettes. Every color in the app derives from these RGB triplets:
+   --c-life   the living accent (halos, tendrils, growth)
+   --c-warm   the warm accent (fireflies, actions, attention)
+   --c-spark  the brightest glow (mote cores, highlights)
+   --c-ink    text
+   --c-deep   panel glass
+   --bg-a/b/c the canvas depth gradient */
+
+:root,
+:root[data-theme='nature'] {
+  --c-life: 142, 255, 135;
+  --c-life-soft: 116, 255, 167;
+  --c-glow: 238, 255, 209;
+  --c-warm: 255, 188, 117;
+  --c-spark: 255, 243, 199;
+  --c-ink: 255, 250, 240;
+  --c-deep: 19, 19, 16;
+  --c-deep-warm: 32, 22, 15;
+  --c-on-warm: 21, 17, 11;
+  --bg-a: 21, 23, 17;
+  --bg-b: 14, 16, 14;
+  --bg-c: 9, 11, 10;
+}
+
+:root[data-theme='technical'] {
+  --c-life: 96, 216, 255;
+  --c-life-soft: 82, 190, 240;
+  --c-glow: 205, 236, 255;
+  --c-warm: 255, 178, 92;
+  --c-spark: 224, 244, 255;
+  --c-ink: 233, 240, 244;
+  --c-deep: 15, 17, 20;
+  --c-deep-warm: 27, 23, 17;
+  --c-on-warm: 17, 13, 7;
+  --bg-a: 19, 22, 26;
+  --bg-b: 13, 15, 18;
+  --bg-c: 8, 10, 12;
+}
+
+:root[data-theme='space'] {
+  --c-life: 168, 148, 255;
+  --c-life-soft: 132, 152, 255;
+  --c-glow: 214, 202, 255;
+  --c-warm: 255, 212, 142;
+  --c-spark: 242, 238, 255;
+  --c-ink: 240, 240, 255;
+  --c-deep: 15, 14, 28;
+  --c-deep-warm: 30, 24, 44;
+  --c-on-warm: 22, 16, 8;
+  --bg-a: 18, 16, 38;
+  --bg-b: 11, 10, 26;
+  --bg-c: 6, 6, 15;
+}
+
+/* Three small worlds to step into, resting bottom-left beside the help dot. */
+.theme-dots {
+  position: absolute;
+  bottom: 24px;
+  left: 64px;
+  z-index: 18;
+  display: flex;
+  gap: 10px;
+}
+
+.theme-dot {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition:
+    opacity 180ms ease,
+    scale 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.theme-dot--nature {
+  background: radial-gradient(circle at 38% 32%, #eaffdb, #8eff87 55%, #1c3a1a);
+}
+
+.theme-dot--technical {
+  background: radial-gradient(circle at 38% 32%, #dff4ff, #60d8ff 55%, #12303c);
+}
+
+.theme-dot--space {
+  background: radial-gradient(circle at 38% 32%, #efeaff, #a894ff 55%, #221a4a);
+}
+
+.theme-dot:hover {
+  opacity: 0.9;
+  scale: 1.15;
+}
+
+.theme-dot--active {
+  opacity: 1;
+  box-shadow: 0 0 14px rgba(var(--c-life), 0.5);
+  scale: 1.2;
+}

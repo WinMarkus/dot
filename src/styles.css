@@ -36,9 +36,9 @@ input {
   background:
     linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    radial-gradient(circle at 50% 55%, rgba(238, 255, 209, 0.08), transparent 22rem),
-    radial-gradient(circle at 18% 18%, rgba(116, 255, 167, 0.1), transparent 18rem),
-    linear-gradient(145deg, #151711 0%, #0e100e 50%, #090b0a 100%);
+    radial-gradient(circle at 50% 55%, rgba(var(--c-glow), 0.08), transparent 22rem),
+    radial-gradient(circle at 18% 18%, rgba(var(--c-life-soft), 0.1), transparent 18rem),
+    linear-gradient(145deg, rgb(var(--bg-a)) 0%, rgb(var(--bg-b)) 50%, rgb(var(--bg-c)) 100%);
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -126,10 +126,10 @@ input {
   position: absolute;
   inset: 9px;
   border-radius: inherit;
-  background: #8eff87;
+  background: rgb(var(--c-life));
   box-shadow:
-    0 0 18px rgba(142, 255, 135, 0.95),
-    0 0 42px rgba(142, 255, 135, 0.5);
+    0 0 18px rgba(var(--c-life), 0.95),
+    0 0 42px rgba(var(--c-life), 0.5);
   transition:
     background 180ms ease,
     box-shadow 180ms ease,
@@ -138,16 +138,16 @@ input {
 
 .seed-dot--active .seed-dot__core,
 .seed-dot--generating .seed-dot__core {
-  background: #ffbc75;
+  background: rgb(var(--c-warm));
   box-shadow:
-    0 0 18px rgba(255, 188, 117, 0.95),
-    0 0 48px rgba(255, 188, 117, 0.52);
+    0 0 18px rgba(var(--c-warm), 0.95),
+    0 0 48px rgba(var(--c-warm), 0.52);
   transform: scale(1.18);
 }
 
 .seed-dot--active::before,
 .seed-dot--generating::before {
-  background: rgba(255, 188, 117, 0.18);
+  background: rgba(var(--c-warm), 0.18);
 }
 
 .seed-dot--generating {
@@ -167,7 +167,7 @@ input {
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 999px;
-  background: rgba(19, 19, 16, 0.78);
+  background: rgba(var(--c-deep), 0.78);
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.46),
     inset 0 1px rgba(255, 255, 255, 0.08);
@@ -200,15 +200,15 @@ input {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #ffbc75;
-  box-shadow: 0 0 12px rgba(255, 188, 117, 0.9);
+  background: rgb(var(--c-warm));
+  box-shadow: 0 0 12px rgba(var(--c-warm), 0.9);
 }
 
 .command-bar input {
   width: 100%;
   border: 0;
   outline: 0;
-  color: #fffaf0;
+  color: rgb(var(--c-ink));
   background: transparent;
   font-size: 1.05rem;
 }
@@ -222,8 +222,8 @@ input {
   padding: 12px 18px;
   border: 0;
   border-radius: 999px;
-  color: #15110b;
-  background: #ffbc75;
+  color: rgb(var(--c-on-warm));
+  background: rgb(var(--c-warm));
   cursor: pointer;
   transition:
     opacity 160ms ease,
@@ -254,7 +254,7 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
   color: rgba(243, 239, 230, 0.5);
-  background: rgba(19, 19, 16, 0.42);
+  background: rgba(var(--c-deep), 0.42);
   backdrop-filter: blur(12px);
   cursor: help;
   transition:
@@ -266,8 +266,8 @@ input {
 
 .canvas-help__trigger:hover,
 .canvas-help:focus-within .canvas-help__trigger {
-  color: #fff3c7;
-  border-color: rgba(255, 188, 117, 0.34);
+  color: rgb(var(--c-spark));
+  border-color: rgba(var(--c-warm), 0.34);
   background: rgba(26, 27, 22, 0.74);
   transform: translateY(-1px);
 }
@@ -284,7 +284,7 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   color: rgba(243, 239, 230, 0.66);
-  background: rgba(19, 19, 16, 0.8);
+  background: rgba(var(--c-deep), 0.8);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(18px);
   font-size: 0.75rem;
@@ -327,7 +327,7 @@ input {
   content: "";
   opacity: 0;
   pointer-events: none;
-  background: linear-gradient(135deg, rgba(255, 188, 117, 0.28), transparent 34%, rgba(142, 255, 135, 0.16));
+  background: linear-gradient(135deg, rgba(var(--c-warm), 0.28), transparent 34%, rgba(var(--c-life), 0.16));
   transition: opacity 180ms ease;
 }
 
@@ -346,7 +346,7 @@ input {
 }
 
 .artifact-card:focus-visible {
-  outline: 2px solid rgba(255, 188, 117, 0.75);
+  outline: 2px solid rgba(var(--c-warm), 0.75);
   outline-offset: 4px;
 }
 
@@ -367,7 +367,7 @@ input {
   place-items: center;
   border: 0;
   border-radius: 999px;
-  color: #20160f;
+  color: rgb(var(--c-deep-warm));
   cursor: pointer;
 }
 
@@ -384,10 +384,10 @@ input {
   width: 9px;
   height: 9px;
   border-radius: inherit;
-  background: #fff3c7;
+  background: rgb(var(--c-spark));
   box-shadow:
-    0 0 12px rgba(255, 243, 199, 0.95),
-    0 0 26px rgba(255, 188, 117, 0.72);
+    0 0 12px rgba(var(--c-spark), 0.95),
+    0 0 26px rgba(var(--c-warm), 0.72);
   animation: spark-orbit 2.8s ease-in-out infinite;
   transition:
     transform 220ms ease,
@@ -399,18 +399,18 @@ input {
 .artifact-action-system--open .artifact-action-root span {
   transform: scale(1.18);
   box-shadow:
-    0 0 16px rgba(255, 243, 199, 1),
-    0 0 40px rgba(255, 188, 117, 0.8);
+    0 0 16px rgba(var(--c-spark), 1),
+    0 0 40px rgba(var(--c-warm), 0.8);
 }
 
 .artifact-action {
   width: 26px;
   height: 26px;
   opacity: 0;
-  background: #ffbc75;
+  background: rgb(var(--c-warm));
   box-shadow:
-    0 0 0 rgba(255, 188, 117, 0),
-    0 0 0 rgba(255, 243, 199, 0);
+    0 0 0 rgba(var(--c-warm), 0),
+    0 0 0 rgba(var(--c-spark), 0);
   font-size: 0.72rem;
   font-weight: 800;
   transform: translate(0, 0) scale(0.18);
@@ -427,7 +427,7 @@ input {
   padding: 4px 7px;
   border-radius: 999px;
   color: rgba(243, 239, 230, 0.82);
-  background: rgba(19, 19, 16, 0.84);
+  background: rgba(var(--c-deep), 0.84);
   content: attr(data-label);
   font-size: 0.62rem;
   font-weight: 700;
@@ -449,8 +449,8 @@ input {
 .artifact-action:hover,
 .artifact-action:focus-visible {
   box-shadow:
-    0 0 14px rgba(255, 188, 117, 0.82),
-    0 0 34px rgba(255, 243, 199, 0.28);
+    0 0 14px rgba(var(--c-warm), 0.82),
+    0 0 34px rgba(var(--c-spark), 0.28);
 }
 
 .artifact-action--inspect {
@@ -481,7 +481,7 @@ input {
 .artifact-card__eyebrow {
   position: relative;
   margin-bottom: 12px;
-  color: rgba(255, 188, 117, 0.8);
+  color: rgba(var(--c-warm), 0.8);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -491,7 +491,7 @@ input {
 .artifact-card h2 {
   position: relative;
   margin: 0 0 14px;
-  color: #fffaf0;
+  color: rgb(var(--c-ink));
   font-size: 1.28rem;
   line-height: 1.08;
 }
@@ -525,7 +525,7 @@ input {
 }
 
 .component-preview__label {
-  color: rgba(255, 188, 117, 0.74);
+  color: rgba(var(--c-warm), 0.74);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -533,7 +533,7 @@ input {
 }
 
 .component-preview strong {
-  color: rgba(255, 250, 240, 0.92);
+  color: rgba(var(--c-ink), 0.92);
 }
 
 .component-preview__actions {
@@ -545,8 +545,8 @@ input {
 .component-preview__actions span {
   padding: 7px 10px;
   border-radius: 999px;
-  color: rgba(21, 17, 11, 0.88);
-  background: rgba(255, 188, 117, 0.82);
+  color: rgba(var(--c-on-warm), 0.88);
+  background: rgba(var(--c-warm), 0.82);
   font-size: 0.7rem;
   font-weight: 800;
 }
@@ -560,8 +560,8 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 20px;
   background:
-    radial-gradient(circle at 30% 20%, rgba(142, 255, 135, 0.18), transparent 42%),
-    radial-gradient(circle at 74% 78%, rgba(255, 188, 117, 0.22), transparent 42%),
+    radial-gradient(circle at 30% 20%, rgba(var(--c-life), 0.18), transparent 42%),
+    radial-gradient(circle at 74% 78%, rgba(var(--c-warm), 0.22), transparent 42%),
     rgba(255, 255, 255, 0.04);
 }
 
@@ -570,7 +570,7 @@ input {
   height: 54px;
   border-radius: 18px;
   background:
-    linear-gradient(135deg, rgba(255, 243, 199, 0.9), rgba(255, 188, 117, 0.42)),
+    linear-gradient(135deg, rgba(var(--c-spark), 0.9), rgba(var(--c-warm), 0.42)),
     rgba(255, 255, 255, 0.06);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.26);
 }
@@ -594,9 +594,9 @@ input {
   height: 50px;
   place-items: center;
   border-radius: 999px;
-  color: #15110b;
-  background: #ffbc75;
-  box-shadow: 0 0 30px rgba(255, 188, 117, 0.4);
+  color: rgb(var(--c-on-warm));
+  background: rgb(var(--c-warm));
+  box-shadow: 0 0 30px rgba(var(--c-warm), 0.4);
 }
 
 .video-preview ol {
@@ -628,7 +628,7 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 28px;
   color: rgba(243, 239, 230, 0.72);
-  background: rgba(19, 19, 16, 0.82);
+  background: rgba(var(--c-deep), 0.82);
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
   backdrop-filter: blur(22px);
 }
@@ -669,27 +669,27 @@ input {
 }
 
 .inspector-panel__icon--remove {
-  color: #20160f;
+  color: rgb(var(--c-deep-warm));
   border-color: rgba(255, 123, 114, 0.42);
   background: #ff7b72;
 }
 
 .inspector-panel__icon:hover,
 .inspector-panel__icon:focus-visible {
-  border-color: rgba(255, 188, 117, 0.38);
-  color: #fffaf0;
-  background: rgba(255, 188, 117, 0.12);
+  border-color: rgba(var(--c-warm), 0.38);
+  color: rgb(var(--c-ink));
+  background: rgba(var(--c-warm), 0.12);
 }
 
 .inspector-panel__icon--remove:hover,
 .inspector-panel__icon--remove:focus-visible {
-  color: #20160f;
-  background: #ffbc75;
+  color: rgb(var(--c-deep-warm));
+  background: rgb(var(--c-warm));
 }
 
 .inspector-panel__eyebrow {
   margin-bottom: 10px;
-  color: rgba(255, 188, 117, 0.82);
+  color: rgba(var(--c-warm), 0.82);
   font-size: 0.72rem;
   font-weight: 900;
   letter-spacing: 0.14em;
@@ -698,7 +698,7 @@ input {
 
 .inspector-panel h2 {
   margin: 0;
-  color: #fffaf0;
+  color: rgb(var(--c-ink));
   font-size: 1.15rem;
   line-height: 1.15;
 }
@@ -741,7 +741,7 @@ input {
   min-width: 0;
   border: 0;
   outline: 0;
-  color: #fffaf0;
+  color: rgb(var(--c-ink));
   background: transparent;
   font-size: 0.86rem;
 }
@@ -754,8 +754,8 @@ input {
   border: 0;
   border-radius: 999px;
   padding: 8px 11px;
-  color: #15110b;
-  background: #ffbc75;
+  color: rgb(var(--c-on-warm));
+  background: rgb(var(--c-warm));
   cursor: pointer;
   font-size: 0.78rem;
   font-weight: 800;
@@ -774,7 +774,7 @@ input {
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
-  color: rgba(255, 250, 240, 0.78);
+  color: rgba(var(--c-ink), 0.78);
   background: rgba(0, 0, 0, 0.22);
   font-size: 0.72rem;
   line-height: 1.5;

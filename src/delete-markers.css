@@ -7,15 +7,15 @@
 .artifact-action--regenerate {
   top: 46px;
   right: 130px;
-  background: #fff3c7;
+  background: rgb(var(--c-spark));
   transition-delay: 310ms;
 }
 
 .artifact-action--regenerate:hover,
 .artifact-action--regenerate:focus-visible {
   box-shadow:
-    0 0 14px rgba(255, 243, 199, 0.85),
-    0 0 34px rgba(255, 188, 117, 0.3);
+    0 0 14px rgba(var(--c-spark), 0.85),
+    0 0 34px rgba(var(--c-warm), 0.3);
 }
 
 .artifact-action--delete {
@@ -42,8 +42,8 @@
   display: grid;
   place-items: center;
   border-radius: inherit;
-  color: rgba(255, 243, 199, 0.88);
-  background: rgba(19, 19, 16, 0.42);
+  color: rgba(var(--c-spark), 0.88);
+  background: rgba(var(--c-deep), 0.42);
   content: "regenerating";
   font-size: 0.72rem;
   font-weight: 900;
@@ -53,7 +53,7 @@
 }
 
 .command-bar__regenerate {
-  color: rgba(255, 250, 240, 0.82) !important;
+  color: rgba(var(--c-ink), 0.82) !important;
   background: rgba(255, 255, 255, 0.08) !important;
 }
 
@@ -69,8 +69,8 @@
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 20px;
   background:
-    radial-gradient(circle at 14% 20%, rgba(142, 255, 135, 0.11), transparent 38%),
-    radial-gradient(circle at 86% 80%, rgba(255, 188, 117, 0.12), transparent 42%),
+    radial-gradient(circle at 14% 20%, rgba(var(--c-life), 0.11), transparent 38%),
+    radial-gradient(circle at 86% 80%, rgba(var(--c-warm), 0.12), transparent 42%),
     rgba(255, 255, 255, 0.04);
 }
 
@@ -81,7 +81,7 @@
 
 .object-preview__header span,
 .object-preview__grid small {
-  color: rgba(255, 188, 117, 0.74);
+  color: rgba(var(--c-warm), 0.74);
   font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0.1em;
@@ -91,7 +91,7 @@
 .object-preview__header strong {
   display: -webkit-box;
   overflow: hidden;
-  color: rgba(255, 250, 240, 0.9);
+  color: rgba(var(--c-ink), 0.9);
   font-size: 0.94rem;
   line-height: 1.25;
   -webkit-box-orient: vertical;
@@ -144,7 +144,7 @@
   padding: 8px 10px 8px 12px;
   border: 1px solid rgba(255, 123, 114, 0.24);
   border-radius: 999px;
-  color: rgba(255, 250, 240, 0.82);
+  color: rgba(var(--c-ink), 0.82);
   background: rgba(22, 14, 13, 0.86);
   box-shadow:
     0 14px 38px rgba(0, 0, 0, 0.34),
@@ -161,8 +161,8 @@
   border: 0;
   border-radius: 999px;
   padding: 5px 8px;
-  color: #20160f;
-  background: #ffbc75;
+  color: rgb(var(--c-deep-warm));
+  background: rgb(var(--c-warm));
   cursor: pointer;
   font-size: 0.68rem;
   font-weight: 900;
@@ -220,10 +220,10 @@
 .deleted-marker:hover::after,
 .deleted-marker:focus-visible::after,
 .deleted-marker--dragging::after {
-  background: #ffbc75;
+  background: rgb(var(--c-warm));
   box-shadow:
-    0 0 16px rgba(255, 188, 117, 0.95),
-    0 0 36px rgba(255, 188, 117, 0.42);
+    0 0 16px rgba(var(--c-warm), 0.95),
+    0 0 36px rgba(var(--c-warm), 0.42);
   transform: scale(1.35);
 }
 
@@ -233,8 +233,8 @@
   top: -28px;
   padding: 5px 8px;
   border-radius: 999px;
-  color: rgba(255, 250, 240, 0.86);
-  background: rgba(19, 19, 16, 0.86);
+  color: rgba(var(--c-ink), 0.86);
+  background: rgba(var(--c-deep), 0.86);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(12px);
   font-size: 0.64rem;
@@ -263,7 +263,7 @@
   border: 1px solid rgba(255, 123, 114, 0.2);
   border-radius: 999px;
   padding: 7px 10px;
-  color: rgba(255, 250, 240, 0.72);
+  color: rgba(var(--c-ink), 0.72);
   background: rgba(22, 14, 13, 0.66);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(14px);

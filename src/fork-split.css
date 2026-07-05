@@ -10,8 +10,8 @@
   inset: -6px;
   border-radius: inherit;
   background:
-    radial-gradient(ellipse at 50% 50%, rgba(255, 188, 117, 0.34) 0 3%, transparent 12%),
-    linear-gradient(90deg, transparent 0 42%, rgba(255, 243, 199, 0.34) 49%, rgba(255, 188, 117, 0.26) 51%, transparent 58%);
+    radial-gradient(ellipse at 50% 50%, rgba(var(--c-warm), 0.34) 0 3%, transparent 12%),
+    linear-gradient(90deg, transparent 0 42%, rgba(var(--c-spark), 0.34) 49%, rgba(var(--c-warm), 0.26) 51%, transparent 58%);
   content: "";
   opacity: 0;
   pointer-events: none;

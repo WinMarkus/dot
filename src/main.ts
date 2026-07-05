@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import App from './App.vue';
 import { installInspectorOriginTracking } from './inspector-origin';
+import './themes.css';
 import './styles.css';
 import './delete-markers.css';
 import './mobile-command-bar.css';

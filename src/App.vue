@@ -36,6 +36,33 @@ const promptMode = ref<PromptMode>({ type: 'create' });
 const promptInput = ref<HTMLInputElement | null>(null);
 const inspectorPanel = ref<HTMLElement | null>(null);
 const inspectorEditPrompt = ref('');
+const THEMES = ['nature', 'technical', 'space'] as const;
+type ThemeName = (typeof THEMES)[number];
+
+function loadSavedTheme(): ThemeName {
+  try {
+    const saved = localStorage.getItem('dot:theme');
+    return THEMES.includes(saved as ThemeName) ? (saved as ThemeName) : 'nature';
+  } catch {
+    return 'nature';
+  }
+}
+
+const theme = ref<ThemeName>(loadSavedTheme());
+
+watch(
+  theme,
+  (value) => {
+    document.documentElement.dataset.theme = value;
+    try {
+      localStorage.setItem('dot:theme', value);
+    } catch {
+      // Private mode: the theme still applies for this session.
+    }
+  },
+  { immediate: true },
+);
+
 const generationStatus = ref<string | null>(null);
 const modelCatalog = ref<ModelCatalog | null>(null);
 const selectedTextModel = ref<string | null>(loadSavedModel('text'));
@@ -1738,6 +1765,20 @@ onUnmounted(() => {
     <button v-if="deletedMarkers.length" class="marker-control" type="button" @pointerdown.stop @click="clearDeletedMarkers">
       clear deleted dots
     </button>
+
+    <div class="theme-dots" @pointerdown.stop @pointerup.stop @dblclick.stop>
+      <button
+        v-for="name in THEMES"
+        :key="name"
+        class="theme-dot"
+        :class="[`theme-dot--${name}`, { 'theme-dot--active': theme === name }]"
+        type="button"
+        :title="name"
+        :aria-label="`Switch to ${name} theme`"
+        :aria-pressed="theme === name"
+        @click="theme = name"
+      />
+    </div>
 
     <div class="model-dock" @pointerdown.stop @pointermove.stop @pointerup.stop @dblclick.stop @wheel.stop>
       <button

@@ -89,9 +89,9 @@ npm run dev
 Optional environment variables (the env models act as defaults; users can pick a different model per browser via the on-site model picker):
 
 ```bash
-OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
 OPENROUTER_IMAGE_MODEL=google/gemini-3.1-flash-lite-image
-OPENROUTER_SUGGEST_MODEL=google/gemini-3.1-flash-lite
+OPENROUTER_SUGGEST_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
 PUBLIC_APP_URL=http://localhost:3000
 PORT=3000
 ```
@@ -104,7 +104,7 @@ AI mode needs a Render Web Service, not a static site.
 - start command: `npm start`
 - env vars:
   - `OPENROUTER_API_KEY`
-  - `OPENROUTER_MODEL` optional, default is `openai/gpt-4o-mini`
+  - `OPENROUTER_MODEL` optional, default is `nvidia/nemotron-3-ultra-550b-a55b:free` (zero cost; OpenRouter rate-limits `:free` models to roughly 50 requests/day, more if you hold credits)
   - `OPENROUTER_IMAGE_MODEL` optional, default is `google/gemini-3.1-flash-lite-image` (bump to `google/gemini-3.1-flash-image` or `google/gemini-3-pro-image` for higher quality)
   - `PUBLIC_APP_URL` optional but recommended
 

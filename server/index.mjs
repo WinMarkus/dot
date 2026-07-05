@@ -278,7 +278,7 @@ function logGenerationError(event, data = {}) {
   console.error(`[dot:generate] ${event}`, JSON.stringify(data));
 }
 
-const DEFAULT_TEXT_MODEL = () => process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+const DEFAULT_TEXT_MODEL = () => process.env.OPENROUTER_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 const DEFAULT_IMAGE_MODEL = () => process.env.OPENROUTER_IMAGE_MODEL || 'google/gemini-3.1-flash-lite-image';
 
 const MODEL_CATALOG_TTL_MS = 60 * 60 * 1000;
@@ -318,16 +318,28 @@ async function fetchModelCatalog() {
 
   const textCandidates = models.filter((model) => {
     const outputs = safeArray(model?.architecture?.output_modalities);
+    // Guard/moderation classifiers produce labels, not artifacts.
+    if (/guard|safety|moderation/i.test(model.id)) return false;
     return outputs.includes('text') && !outputs.includes('image');
   });
 
-  const textModels = TEXT_MODEL_FAMILIES.flatMap((family) =>
+  const familyModels = TEXT_MODEL_FAMILIES.flatMap((family) =>
     textCandidates
       .filter((model) => family.test(model.id))
       .sort(byNewest)
-      .slice(0, 2)
-      .map(toModelOption),
+      .slice(0, 2),
   );
+
+  // Cost-free options deserve a spot regardless of family.
+  const freeModels = textCandidates
+    .filter((model) => model.id.endsWith(':free'))
+    .sort(byNewest)
+    .slice(0, 4);
+
+  const seen = new Set();
+  const textModels = [...freeModels, ...familyModels]
+    .filter((model) => !seen.has(model.id) && seen.add(model.id))
+    .map(toModelOption);
 
   return { textModels, imageModels };
 }
@@ -378,7 +390,9 @@ function buildOpenRouterRequestBody(model, body, responseFormat) {
       { role: 'system', content: buildSystemPrompt() },
       { role: 'user', content: JSON.stringify(buildUserPayload(body)) },
     ],
-    response_format: responseFormat,
+    // Some models (notably :free variants) reject response_format entirely;
+    // in plain mode we rely on the prompt plus extractJsonObject instead.
+    ...(responseFormat ? { response_format: responseFormat } : {}),
     temperature: 0.3,
     max_tokens: 3200,
   };
@@ -474,7 +488,7 @@ async function callOpenRouter(body, modelOverride) {
     const payload = await requestOpenRouter(apiKey, model, body, strictJsonSchemaFormat, 'json_schema');
     return parseOpenRouterPayload(payload, model, 'json_schema');
   } catch (schemaError) {
-    if (schemaError.statusCode !== 400) throw schemaError;
+    if (schemaError.statusCode !== 400 && schemaError.statusCode !== 404) throw schemaError;
 
     logGeneration('openrouter_retry', {
       model,
@@ -486,11 +500,25 @@ async function callOpenRouter(body, modelOverride) {
       const payload = await requestOpenRouter(apiKey, model, body, { type: 'json_object' }, 'json_object');
       return parseOpenRouterPayload(payload, model, 'json_object');
     } catch (jsonObjectError) {
-      jsonObjectError.detail = JSON.stringify({
-        jsonSchemaError: schemaError.detail || schemaError.message,
-        jsonObjectError: jsonObjectError.detail || jsonObjectError.message,
-      }).slice(0, 2400);
-      throw jsonObjectError;
+      if (jsonObjectError.statusCode !== 400 && jsonObjectError.statusCode !== 404) throw jsonObjectError;
+
+      logGeneration('openrouter_retry', {
+        model,
+        from: 'json_object',
+        to: 'plain',
+      });
+
+      try {
+        const payload = await requestOpenRouter(apiKey, model, body, null, 'plain');
+        return parseOpenRouterPayload(payload, model, 'plain');
+      } catch (plainError) {
+        plainError.detail = JSON.stringify({
+          jsonSchemaError: schemaError.detail || schemaError.message,
+          jsonObjectError: jsonObjectError.detail || jsonObjectError.message,
+          plainError: plainError.detail || plainError.message,
+        }).slice(0, 2400);
+        throw plainError;
+      }
     }
   }
 }
@@ -583,7 +611,7 @@ app.post('/api/generate-image', async (request, response) => {
   }
 });
 
-const DEFAULT_SUGGEST_MODEL = () => process.env.OPENROUTER_SUGGEST_MODEL || 'google/gemini-3.1-flash-lite';
+const DEFAULT_SUGGEST_MODEL = () => process.env.OPENROUTER_SUGGEST_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
 const suggestionResponseSchema = {
   type: 'object',
@@ -667,7 +695,7 @@ app.post('/api/suggest', async (request, response) => {
       { role: 'system', content: buildSuggestSystemPrompt() },
       { role: 'user', content: JSON.stringify(userPayload) },
     ],
-    response_format: responseFormat,
+    ...(responseFormat ? { response_format: responseFormat } : {}),
     temperature: 0.8,
     max_tokens: 600,
   });
@@ -715,8 +743,13 @@ app.post('/api/suggest', async (request, response) => {
         'json_schema',
       );
     } catch (schemaError) {
-      if (schemaError.statusCode !== 400) throw schemaError;
-      result = await callSuggest({ type: 'json_object' }, 'json_object');
+      if (schemaError.statusCode !== 400 && schemaError.statusCode !== 404) throw schemaError;
+      try {
+        result = await callSuggest({ type: 'json_object' }, 'json_object');
+      } catch (jsonObjectError) {
+        if (jsonObjectError.statusCode !== 400 && jsonObjectError.statusCode !== 404) throw jsonObjectError;
+        result = await callSuggest(null, 'plain');
+      }
     }
 
     response.json(result);

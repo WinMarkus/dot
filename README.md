@@ -13,7 +13,7 @@ A minimal generative creation canvas prototype.
 - if the AI route is missing or fails, the app falls back to the local placeholder generator
 - object artifacts use a universal shell with purpose, ports, tags, and possible connections
 - component artifacts are generated as Vue 3 single-file components and rendered in a sandboxed iframe
-- image artifacts are generated via OpenRouter image models (default Gemini 3.1 Flash Image) and render as real images in the bubble, with a breathing placeholder while painting and a retry control on failure
+- image artifacts are generated via OpenRouter image models (default Gemini 3.1 Flash Lite Image) and render as real images in the bubble, with a breathing placeholder while painting and a retry control on failure
 - the shell avoids domain-specific UI assumptions; meaning should come from the model
 - generated artifacts materialize onto the canvas
 - generated artifacts are draggable
@@ -86,7 +86,7 @@ Optional environment variables:
 
 ```bash
 OPENROUTER_MODEL=openai/gpt-4o-mini
-OPENROUTER_IMAGE_MODEL=google/gemini-3.1-flash-image
+OPENROUTER_IMAGE_MODEL=google/gemini-3.1-flash-lite-image
 PUBLIC_APP_URL=http://localhost:3000
 PORT=3000
 ```
@@ -100,7 +100,7 @@ AI mode needs a Render Web Service, not a static site.
 - env vars:
   - `OPENROUTER_API_KEY`
   - `OPENROUTER_MODEL` optional, default is `openai/gpt-4o-mini`
-  - `OPENROUTER_IMAGE_MODEL` optional, default is `google/gemini-3.1-flash-image`
+  - `OPENROUTER_IMAGE_MODEL` optional, default is `google/gemini-3.1-flash-lite-image` (bump to `google/gemini-3.1-flash-image` or `google/gemini-3-pro-image` for higher quality)
   - `PUBLIC_APP_URL` optional but recommended
 
 ## AI generation contract

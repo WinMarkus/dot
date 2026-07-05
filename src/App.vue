@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
-import { generateArtifactsWithAi } from './ai-client';
+import { generateArtifactsWithAi, generateImageWithAi } from './ai-client';
 import { createArtifactFromGenerated, cloneArtifact, fakeGenerateArtifact, nowLabel } from './artifact-factory';
 import {
   canNestArtifact as canNestArtifactInTree,
@@ -310,9 +310,48 @@ async function requestGeneratedArtifacts(value: string, mode: 'create' | 'edit' 
   }
 }
 
+// Always resolve through artifacts.value so we mutate the reactive proxy —
+// a raw pre-push reference would update silently without re-rendering.
+function findLiveArtifact(artifactId: string) {
+  return artifacts.value.find((item) => item.id === artifactId) ?? null;
+}
+
+async function hydrateImageArtifact(artifactId: string) {
+  const artifact = findLiveArtifact(artifactId);
+  if (!artifact || artifact.kind !== 'image') return;
+  if (artifact.content.imageUrl || artifact.content.imageStatus === 'pending') return;
+
+  // Local-fallback artifacts have no provider; without a reachable AI backend
+  // the placeholder spec is the final state.
+  if (!artifact.content.provider || !artifact.content.imagePrompt) return;
+
+  artifact.content.imageStatus = 'pending';
+
+  try {
+    const result = await generateImageWithAi(artifact.content.imagePrompt);
+    const live = findLiveArtifact(artifactId);
+    if (!live || live.content !== artifact.content) return;
+
+    live.content.imageUrl = result.image;
+    live.content.imageStatus = 'ready';
+    if (result.model) live.content.model = result.model;
+  } catch (error) {
+    console.warn('Image generation failed.', error);
+    const live = findLiveArtifact(artifactId);
+    if (live && live.content === artifact.content) live.content.imageStatus = 'error';
+  }
+}
+
+function retryImageArtifact(artifact: Artifact) {
+  if (artifact.content.imageStatus !== 'error') return;
+  artifact.content.imageStatus = undefined;
+  void hydrateImageArtifact(artifact.id);
+}
+
 function placeGeneratedArtifactTree(generated: GeneratedArtifact, nextPrompt: string, position: Point, parentId?: string) {
   const artifact = createArtifactFromGenerated(generated, nextPrompt, position, parentId);
   artifacts.value.push(artifact);
+  void hydrateImageArtifact(artifact.id);
 
   generated.children?.forEach((child, index) => {
     placeGeneratedArtifactTree(
@@ -342,6 +381,7 @@ function applyGeneratedArtifact(target: Artifact, generated: GeneratedArtifact, 
   target.title = mapped.title;
   target.prompt = nextPrompt;
   target.content = mapped.content;
+  void hydrateImageArtifact(target.id);
 
   generated.children?.forEach((child, index) => {
     placeGeneratedArtifactTree(
@@ -1023,9 +1063,32 @@ onUnmounted(() => {
           </template>
 
           <template v-else-if="artifact.kind === 'image'">
-            <div class="image-preview" role="img" :aria-label="artifact.content.alt ?? artifact.title">
+            <figure v-if="artifact.content.imageUrl" class="image-result">
+              <img :src="artifact.content.imageUrl" :alt="artifact.content.alt ?? artifact.title" draggable="false" />
+            </figure>
+
+            <div
+              v-else-if="artifact.content.imageStatus === 'pending'"
+              class="image-preview image-preview--loading"
+              role="img"
+              :aria-label="`Generating image: ${artifact.content.alt ?? artifact.title}`"
+            >
+              <span />
+              <p>painting…</p>
+            </div>
+
+            <div v-else class="image-preview" role="img" :aria-label="artifact.content.alt ?? artifact.title">
               <span />
               <p>{{ artifact.content.imagePrompt || artifact.content.description }}</p>
+              <button
+                v-if="artifact.content.imageStatus === 'error'"
+                class="image-preview__retry"
+                type="button"
+                @pointerdown.stop
+                @click.stop="retryImageArtifact(artifact)"
+              >
+                image failed · retry
+              </button>
             </div>
           </template>
 

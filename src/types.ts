@@ -42,6 +42,9 @@ export type ArtifactContent = {
   summary?: string;
   purpose?: string;
   imagePrompt?: string;
+  imageUrl?: string;
+  imageStatus?: 'pending' | 'ready' | 'error';
+  vue?: string;
   html?: string;
   css?: string;
   js?: string;

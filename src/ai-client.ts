@@ -30,6 +30,33 @@ export type GenerateArtifactsResponse = {
   usage?: unknown;
 };
 
+export type GenerateImageResponse = {
+  image: string;
+  model?: string;
+};
+
+export async function generateImageWithAi(prompt: string): Promise<GenerateImageResponse> {
+  const response = await fetch('/api/generate-image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prompt }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Image generation failed with ${response.status}`);
+  }
+
+  const payload = (await response.json()) as GenerateImageResponse;
+  if (typeof payload.image !== 'string' || !payload.image.startsWith('data:image/')) {
+    throw new Error('Image generation returned no image');
+  }
+
+  return payload;
+}
+
 export async function generateArtifactsWithAi(request: GenerateArtifactsRequest): Promise<GenerateArtifactsResponse> {
   const response = await fetch('/api/generate', {
     method: 'POST',

@@ -12,7 +12,8 @@ A minimal generative creation canvas prototype.
 - OpenRouter-backed generation returns text, object, image, video, or component artifacts
 - if the AI route is missing or fails, the app falls back to the local placeholder generator
 - object artifacts use a universal shell with purpose, ports, tags, and possible connections
-- component artifacts render sandboxed HTML/CSS/JS in an iframe
+- component artifacts are generated as Vue 3 single-file components and rendered in a sandboxed iframe
+- image artifacts are generated via OpenRouter image models (default Gemini 3.1 Flash Lite Image) and render as real images in the bubble, with a breathing placeholder while painting and a retry control on failure
 - the shell avoids domain-specific UI assumptions; meaning should come from the model
 - generated artifacts materialize onto the canvas
 - generated artifacts are draggable
@@ -46,7 +47,8 @@ A minimal generative creation canvas prototype.
 
 ## Source structure
 
-- `server/index.mjs` serves the built app and exposes `POST /api/generate`
+- `server/index.mjs` serves the built app and exposes `POST /api/generate` and `POST /api/generate-image`
+- `src/vue-sfc.ts` parses generated Vue single-file components into template/script/style blocks
 - `src/types.ts` contains shared domain and interaction types
 - `src/constants.ts` contains core sizing, zoom, and transition constants
 - `src/artifact-factory.ts` contains local fallback generation, artifact cloning, and artifact creation helpers
@@ -73,10 +75,18 @@ npm run build
 OPENROUTER_API_KEY=your_key_here npm start
 ```
 
+Full AI mode with hot reload (two terminals — Vite proxies `/api` to the Express server on port 3000):
+
+```bash
+OPENROUTER_API_KEY=your_key_here npm start
+npm run dev
+```
+
 Optional environment variables:
 
 ```bash
 OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_IMAGE_MODEL=google/gemini-3.1-flash-lite-image
 PUBLIC_APP_URL=http://localhost:3000
 PORT=3000
 ```
@@ -90,6 +100,7 @@ AI mode needs a Render Web Service, not a static site.
 - env vars:
   - `OPENROUTER_API_KEY`
   - `OPENROUTER_MODEL` optional, default is `openai/gpt-4o-mini`
+  - `OPENROUTER_IMAGE_MODEL` optional, default is `google/gemini-3.1-flash-lite-image` (bump to `google/gemini-3.1-flash-image` or `google/gemini-3-pro-image` for higher quality)
   - `PUBLIC_APP_URL` optional but recommended
 
 ## AI generation contract
@@ -105,4 +116,6 @@ The backend asks the model to return strict JSON containing canvas artifacts. Ro
 - `ports.outputs`
 - `children`
 
-Generated component JavaScript runs only inside a sandboxed iframe. The iframe CSP blocks network access and external assets by default.
+Generated components are Vue 3 single-file components (in `content.vue`) mounted only inside a sandboxed iframe. The iframe CSP blocks network access and external assets; the only allowed external script is the app-served Vue runtime. Legacy `html`/`css`/`js` components still render through the old sandbox path.
+
+Image artifacts arrive as a spec first (`content.imagePrompt`), then the client calls `POST /api/generate-image`, which asks an OpenRouter image model (default Gemini 2.5 Flash Image) for the actual picture and returns it as a base64 data URL stored in `content.imageUrl`.

@@ -64,6 +64,114 @@
   display: none;
 }
 
+/* Closed bubbles preview their content: every kind shows a miniature of
+   what lives inside the orb, with the title floating readable on top. */
+.artifact-card--kind-text:not(.artifact-card--selected) .artifact-content,
+.artifact-card--kind-component:not(.artifact-card--selected) .artifact-content,
+.artifact-card--kind-video:not(.artifact-card--selected) .artifact-content,
+.artifact-card--kind-object:not(.artifact-card--selected) .artifact-content {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  overflow: hidden;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.artifact-card--kind-text:not(.artifact-card--selected) h2,
+.artifact-card--kind-component:not(.artifact-card--selected) h2,
+.artifact-card--kind-video:not(.artifact-card--selected) h2,
+.artifact-card--kind-object:not(.artifact-card--selected) h2 {
+  z-index: 2;
+  text-shadow:
+    0 2px 14px rgba(0, 0, 0, 0.85),
+    0 0 4px rgba(0, 0, 0, 0.6);
+}
+
+/* text: the words themselves, tiny and fading toward the orb edge */
+.artifact-card--kind-text:not(.artifact-card--selected) .artifact-content p {
+  height: 100%;
+  margin: 0;
+  padding: 26px 24px;
+  overflow: hidden;
+  color: rgba(255, 250, 240, 0.85);
+  opacity: 0.55;
+  font-size: 0.52rem;
+  line-height: 1.4;
+  text-align: left;
+  mask-image: radial-gradient(circle at 50% 50%, black 34%, transparent 74%);
+}
+
+/* component: the live sandboxed component, scaled to fit the orb */
+.artifact-card--kind-component:not(.artifact-card--selected) .component-frame {
+  width: 200%;
+  height: 200%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 0.9;
+  /* Component content flows from the top of the doubled canvas; nudge it
+     down so the miniature sits visually centered in the orb. */
+  transform: translateY(12%) scale(0.5);
+  transform-origin: 0 0;
+}
+
+.artifact-card--kind-component:not(.artifact-card--selected)::after {
+  inset: 0;
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 250, 240, 0.18), transparent 32%),
+    radial-gradient(circle at 50% 44%, transparent 46%, rgba(0, 0, 0, 0.18) 68%, rgba(0, 0, 0, 0.52) 96%);
+}
+
+/* video: the play button floats in the lower half of the orb */
+.artifact-card--kind-video:not(.artifact-card--selected) .video-preview {
+  min-height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.artifact-card--kind-video:not(.artifact-card--selected) .video-preview__play {
+  position: absolute;
+  left: 50%;
+  bottom: 16%;
+  width: 42px;
+  height: 42px;
+  margin: 0;
+  font-size: 0.85rem;
+  transform: translateX(-50%);
+}
+
+.artifact-card--kind-video:not(.artifact-card--selected) .video-preview ol {
+  display: none;
+}
+
+/* object: its tag chips cluster faintly in the sphere */
+.artifact-card--kind-object:not(.artifact-card--selected) .object-preview {
+  display: grid;
+  height: 100%;
+  place-content: end center;
+  padding: 0 18px 20px;
+  border: 0;
+  background: transparent;
+}
+
+.artifact-card--kind-object:not(.artifact-card--selected) .object-preview__header,
+.artifact-card--kind-object:not(.artifact-card--selected) .object-preview__grid {
+  display: none;
+}
+
+.artifact-card--kind-object:not(.artifact-card--selected) .object-preview__chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  opacity: 0.75;
+  transform: scale(0.82);
+}
+
 /* Closed image bubbles become glossy orbs: the generated image fills the
    circle (clipped by the round overflow), a specular highlight and edge
    vignette add the ball curvature, and the title floats on a dark scrim. */

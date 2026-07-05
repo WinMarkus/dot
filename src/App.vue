@@ -1013,7 +1013,9 @@ onUnmounted(() => {
         v-for="artifact in topLevelArtifacts"
         :key="artifact.id"
         class="artifact-card"
-        :class="{
+        :class="[
+          `artifact-card--kind-${artifact.kind}`,
+          {
           'artifact-card--dragging': artifactDragState?.artifactId === artifact.id,
           'artifact-card--selected': selectedArtifactId === artifact.id,
           'artifact-card--regenerating': regeneratingArtifactId === artifact.id,
@@ -1023,7 +1025,8 @@ onUnmounted(() => {
           'artifact-card--splitting': splittingArtifactIds.includes(artifact.id),
           'artifact-card--fork-born': forkBornArtifactIds.includes(artifact.id),
           'artifact-card--image-orb': artifact.kind === 'image' && Boolean(artifact.content.imageUrl),
-        }"
+          },
+        ]"
         :style="{
           left: `${artifact.x}px`,
           top: `${artifact.y}px`,

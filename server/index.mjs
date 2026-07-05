@@ -37,12 +37,13 @@ const portsSchema = {
 const contentSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['text', 'description', 'imagePrompt', 'storyboard', 'html', 'css', 'js', 'data'],
+  required: ['text', 'description', 'imagePrompt', 'storyboard', 'vue', 'html', 'css', 'js', 'data'],
   properties: {
     text: { type: 'string' },
     description: { type: 'string' },
     imagePrompt: { type: 'string' },
     storyboard: { type: 'array', maxItems: 8, items: { type: 'string' } },
+    vue: { type: 'string' },
     html: { type: 'string' },
     css: { type: 'string' },
     js: { type: 'string' },
@@ -100,6 +101,7 @@ Return ONLY valid JSON:
         "description": "",
         "imagePrompt": "",
         "storyboard": [],
+        "vue": "",
         "html": "",
         "css": "",
         "js": "",
@@ -115,10 +117,15 @@ Hard rules:
 1. If preferredKind is given, follow it unless the prompt clearly contradicts it.
 2. If the user explicitly asks for an image, video, text, or component, return exactly ONE primary artifact of that kind.
 3. Use object only for plans, lists, structures, semantic containers, inventories, rules, or ambiguous prompts.
-4. For image artifacts, put the useful result in content.imagePrompt. Do not turn it into a semantic object unless explicitly asked.
+4. For image artifacts, put a rich, concrete image-generation prompt in content.imagePrompt (subject, style, mood, lighting). Do not turn it into a semantic object unless explicitly asked.
 5. For video artifacts, put the useful result in content.storyboard.
 6. For text artifacts, put the useful result in content.text.
-7. For component artifacts, return small self-contained HTML/CSS/JS: no external scripts, no imports, no network calls.
+7. For component artifacts, put a complete Vue 3 single-file component in content.vue and leave html/css/js empty. Rules for content.vue:
+   - exactly one <template>, one <script>, and optionally one <style> block
+   - the script must use "export default { ... }" (Options API or a setup() function) — never <script setup>
+   - Vue is available as the global "Vue"; destructure what you need, e.g. const { ref, computed } = Vue
+   - no import statements, no external scripts or stylesheets, no network calls
+   - make it feel alive: real interactivity and tasteful self-contained styling
 8. Only create children when the user clearly asks for a structure or hierarchy.
 9. Prefer obeying the user's obvious intent over being clever.
 
@@ -235,6 +242,7 @@ function normalizeArtifact(input, depth = 0) {
       description: safeString(content.description || content.imagePrompt || content.text || input?.summary),
       imagePrompt: safeString(content.imagePrompt || content.description),
       storyboard: safeArray(content.storyboard).map((item) => safeString(item)).filter(Boolean).slice(0, 8),
+      vue: safeString(content.vue),
       html: safeString(content.html),
       css: safeString(content.css),
       js: safeString(content.js),
@@ -279,7 +287,7 @@ function buildOpenRouterRequestBody(model, body, responseFormat) {
     ],
     response_format: responseFormat,
     temperature: 0.3,
-    max_tokens: 1800,
+    max_tokens: 3200,
   };
 }
 
@@ -393,6 +401,93 @@ async function callOpenRouter(body) {
     }
   }
 }
+
+async function callOpenRouterImage(prompt) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    const error = new Error('OPENROUTER_API_KEY is not configured');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const model = process.env.OPENROUTER_IMAGE_MODEL || 'google/gemini-2.5-flash-image';
+
+  logGeneration('image_attempt', { model, promptLength: prompt.length });
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env.PUBLIC_APP_URL || 'http://localhost:3000',
+      'X-Title': 'Dot',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      modalities: ['image', 'text'],
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    logGenerationError('image_failure', { model, status: response.status, detail: detail.slice(0, 900) });
+
+    const error = new Error(`OpenRouter image request failed: ${response.status}`);
+    error.statusCode = response.status;
+    error.detail = detail.slice(0, 2000);
+    throw error;
+  }
+
+  const payload = await response.json();
+  const image = payload?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+
+  if (typeof image !== 'string' || !image.startsWith('data:image/')) {
+    logGenerationError('image_empty', { model, finishReason: payload?.choices?.[0]?.finish_reason ?? null });
+
+    const error = new Error('OpenRouter response did not contain an image');
+    error.statusCode = 502;
+    throw error;
+  }
+
+  logGeneration('image_success', {
+    model: payload.model || model,
+    bytes: image.length,
+    totalTokens: payload?.usage?.total_tokens ?? null,
+  });
+
+  return { image, model: payload.model || model, usage: payload.usage || null };
+}
+
+app.post('/api/generate-image', async (request, response) => {
+  const startedAt = Date.now();
+  const prompt = safeString(request.body?.prompt).trim().slice(0, 2000);
+
+  if (!prompt) {
+    response.status(400).json({ error: 'Prompt is required' });
+    logGenerationError('image_rejected', { reason: 'missing_prompt' });
+    return;
+  }
+
+  try {
+    const result = await callOpenRouterImage(prompt);
+    response.json(result);
+    logGeneration('image_request_success', { durationMs: Date.now() - startedAt, model: result.model });
+  } catch (error) {
+    const statusCode = Number(error.statusCode ?? 500);
+    logGenerationError('image_request_failure', {
+      durationMs: Date.now() - startedAt,
+      statusCode,
+      message: error.message || 'Image generation failed',
+      detail: safeString(error.detail).slice(0, 900),
+    });
+
+    response.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+      error: error.message || 'Image generation failed',
+      detail: error.detail || null,
+    });
+  }
+});
 
 app.get('/api/health', (_request, response) => {
   response.json({ ok: true, providerConfigured: Boolean(process.env.OPENROUTER_API_KEY) });

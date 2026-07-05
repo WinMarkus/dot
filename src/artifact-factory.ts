@@ -81,20 +81,39 @@ function createObjectArtifactContent(value: string): ArtifactContent {
 
 function createComponentArtifactContent(value: string): ArtifactContent {
   const title = makeArtifactTitle(value);
-  const html = `<div class="dot-demo"><h3>${title}</h3><button id="action">click me</button><p id="state">Ready.</p></div>`;
-  const css = `.dot-demo { display: grid; gap: 12px; min-height: 150px; place-items: center; padding: 18px; color: #fffaf0; background: radial-gradient(circle at 30% 20%, rgba(142,255,135,.22), transparent 38%), #151711; border-radius: 20px; font-family: system-ui, sans-serif; } button { border: 0; border-radius: 999px; padding: 10px 14px; background: #ffbc75; color: #15110b; font-weight: 800; cursor: pointer; } p, h3 { margin: 0; }`;
-  const js = `let count = 0; document.getElementById('action')?.addEventListener('click', () => { count += 1; document.getElementById('state').textContent = 'Clicked ' + count + ' times.'; });`;
+  const vue = `<template>
+  <div class="dot-demo">
+    <h3>${title}</h3>
+    <button @click="count += 1">click me</button>
+    <p>{{ count ? 'Clicked ' + count + ' times.' : 'Ready.' }}</p>
+  </div>
+</template>
+
+<script>
+const { ref } = Vue;
+
+export default {
+  setup() {
+    const count = ref(0);
+    return { count };
+  },
+};
+</script>
+
+<style>
+.dot-demo { display: grid; gap: 12px; min-height: 150px; place-items: center; padding: 18px; color: #fffaf0; background: radial-gradient(circle at 30% 20%, rgba(142,255,135,.22), transparent 38%), #151711; border-radius: 20px; font-family: system-ui, sans-serif; }
+button { border: 0; border-radius: 999px; padding: 10px 14px; background: #ffbc75; color: #15110b; font-weight: 800; cursor: pointer; }
+p, h3 { margin: 0; }
+</style>`;
 
   return {
-    raw: `${html}\n\n<style>${css}</style>\n\n<script>${js}</script>`,
+    raw: vue,
     description: value,
-    tags: ['component', 'html', 'css', 'js'],
+    vue,
+    tags: ['component', 'vue'],
     connections: ['props', 'event', 'state'],
     capabilities: ['render', 'interact', 'connect'],
-    summary: 'Sandboxed HTML/CSS/JS component placeholder.',
-    html,
-    css,
-    js,
+    summary: 'Sandboxed Vue component placeholder.',
     ports: {
       inputs: [{ id: 'props', label: 'props', type: 'data', purpose: 'Configuration for the component.' }],
       outputs: [{ id: 'event', label: 'event', type: 'event', purpose: 'User interaction emitted by the component.' }],
@@ -136,7 +155,7 @@ export function fakeGenerateArtifact(value: string, previous?: Artifact): Genera
       kind,
       title,
       purpose: 'Interactive generated component.',
-      summary: 'Sandboxed HTML/CSS/JS component.',
+      summary: 'Sandboxed Vue component.',
       content: createComponentArtifactContent(value),
     };
   }

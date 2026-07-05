@@ -15,6 +15,7 @@ import './fork-split.css';
 import './ai-artifacts.css';
 import './nested-bubbles.css';
 import './model-picker.css';
+import './ghost-suggestions.css';
 import './artifact-open-guard';
 
 installInspectorOriginTracking();

@@ -18,6 +18,7 @@ A minimal generative creation canvas prototype.
 - generated artifacts materialize onto the canvas
 - generated artifacts are draggable
 - newly created artifacts are selected automatically
+- the selected artifact grows ghost suggestions: up to three faint dashed bubbles proposing the next artifact to create (a cheap model imagines expansions, complements, and transformations); one click generates it for real at the ghost's position
 - selected artifacts show a small action dot
 - hover or focus the action dot on desktop to bloom action sub-dots
 - tap the action dot on touch devices to toggle action sub-dots
@@ -49,7 +50,7 @@ A minimal generative creation canvas prototype.
 
 ## Source structure
 
-- `server/index.mjs` serves the built app and exposes `POST /api/generate`, `POST /api/generate-image`, and `GET /api/models`
+- `server/index.mjs` serves the built app and exposes `POST /api/generate`, `POST /api/generate-image`, `POST /api/suggest`, and `GET /api/models`
 - `src/model-picker.ts` loads the curated model catalog and persists the user's model choices
 - `src/vue-sfc.ts` parses generated Vue single-file components into template/script/style blocks
 - `src/types.ts` contains shared domain and interaction types
@@ -90,6 +91,7 @@ Optional environment variables (the env models act as defaults; users can pick a
 ```bash
 OPENROUTER_MODEL=openai/gpt-4o-mini
 OPENROUTER_IMAGE_MODEL=google/gemini-3.1-flash-lite-image
+OPENROUTER_SUGGEST_MODEL=google/gemini-3.1-flash-lite
 PUBLIC_APP_URL=http://localhost:3000
 PORT=3000
 ```

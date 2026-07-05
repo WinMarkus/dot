@@ -31,6 +31,44 @@ export type GenerateArtifactsResponse = {
   usage?: unknown;
 };
 
+export type ArtifactSuggestion = {
+  kind: ArtifactKind;
+  title: string;
+  prompt: string;
+  reason: string;
+};
+
+export type SuggestArtifactsRequest = {
+  artifact: {
+    kind: ArtifactKind;
+    title: string;
+    prompt: string;
+    purpose: string;
+    summary: string;
+  };
+  canvasContext: {
+    artifacts: CanvasArtifactContext[];
+  };
+};
+
+export async function suggestNextArtifacts(request: SuggestArtifactsRequest): Promise<ArtifactSuggestion[]> {
+  const response = await fetch('/api/suggest', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Suggestion request failed with ${response.status}`);
+  }
+
+  const payload = (await response.json()) as { suggestions?: ArtifactSuggestion[] };
+  return Array.isArray(payload.suggestions) ? payload.suggestions.slice(0, 3) : [];
+}
+
 export type GenerateImageResponse = {
   image: string;
   model?: string;

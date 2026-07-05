@@ -583,6 +583,159 @@ app.post('/api/generate-image', async (request, response) => {
   }
 });
 
+const DEFAULT_SUGGEST_MODEL = () => process.env.OPENROUTER_SUGGEST_MODEL || 'google/gemini-3.1-flash-lite';
+
+const suggestionResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['suggestions'],
+  properties: {
+    suggestions: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 3,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind', 'title', 'prompt', 'reason'],
+        properties: {
+          kind: { enum: ['text', 'object', 'image', 'video', 'component'] },
+          title: { type: 'string', minLength: 1, maxLength: 48 },
+          prompt: { type: 'string', minLength: 1, maxLength: 280 },
+          reason: { type: 'string', minLength: 1, maxLength: 120 },
+        },
+      },
+    },
+  },
+};
+
+function buildSuggestSystemPrompt() {
+  return `You are the imagination engine of Dot, a spatial canvas where anything can be created and connected to anything.
+
+Given the artifact the user just made or selected (plus what else is on the canvas), propose up to 3 next artifacts that would be exciting to create and conceptually connect to it.
+
+Think in expansions of scale (tree -> forest -> world), complements (image -> caption text), and transformations (image + text -> a component that renders them, e.g. as a printable page).
+
+Rules:
+- Each suggestion must be a different kind of leap. Never suggest a near-duplicate of the artifact or of anything already on the canvas.
+- "prompt" is the full creation prompt the generator will receive. Make it concrete and self-contained.
+- "title" is 2-4 words shown on a small ghost bubble.
+- "reason" is one short sentence on why this connects.
+- Return ONLY valid JSON: {"suggestions": [{"kind": "...", "title": "...", "prompt": "...", "reason": "..."}]}`;
+}
+
+function normalizeSuggestion(input) {
+  const allowedKinds = new Set(['text', 'object', 'image', 'video', 'component']);
+  return {
+    kind: allowedKinds.has(input?.kind) ? input.kind : 'object',
+    title: safeString(input?.title, 'Next idea').slice(0, 48),
+    prompt: safeString(input?.prompt).slice(0, 280),
+    reason: safeString(input?.reason).slice(0, 120),
+  };
+}
+
+app.post('/api/suggest', async (request, response) => {
+  const startedAt = Date.now();
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    response.status(503).json({ error: 'OPENROUTER_API_KEY is not configured' });
+    return;
+  }
+
+  const artifact = request.body?.artifact;
+  if (!artifact || typeof artifact !== 'object') {
+    response.status(400).json({ error: 'artifact is required' });
+    return;
+  }
+
+  const model = DEFAULT_SUGGEST_MODEL();
+  const userPayload = {
+    artifact: {
+      kind: safeString(artifact.kind, 'object'),
+      title: safeString(artifact.title).slice(0, 60),
+      prompt: safeString(artifact.prompt).slice(0, 240),
+      purpose: safeString(artifact.purpose).slice(0, 240),
+      summary: safeString(artifact.summary).slice(0, 320),
+    },
+    canvasContext: compactCanvasContext(request.body?.canvasContext),
+  };
+
+  const requestBody = (responseFormat) => ({
+    model,
+    messages: [
+      { role: 'system', content: buildSuggestSystemPrompt() },
+      { role: 'user', content: JSON.stringify(userPayload) },
+    ],
+    response_format: responseFormat,
+    temperature: 0.8,
+    max_tokens: 600,
+  });
+
+  async function callSuggest(responseFormat, providerMode) {
+    const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.PUBLIC_APP_URL || 'http://localhost:3000',
+        'X-Title': 'Dot',
+      },
+      body: JSON.stringify(requestBody(responseFormat)),
+    });
+
+    if (!openRouterResponse.ok) {
+      const detail = await openRouterResponse.text();
+      const error = new Error(`OpenRouter suggest request failed: ${openRouterResponse.status}`);
+      error.statusCode = openRouterResponse.status;
+      error.detail = detail.slice(0, 900);
+      throw error;
+    }
+
+    const payload = await openRouterResponse.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') {
+      const error = new Error('OpenRouter suggest response did not contain text content');
+      error.statusCode = 502;
+      throw error;
+    }
+
+    const parsed = JSON.parse(extractJsonObject(content));
+    const suggestions = safeArray(parsed.suggestions).slice(0, 3).map(normalizeSuggestion).filter((item) => item.prompt);
+
+    logGeneration('suggest_success', { model: payload.model || model, providerMode, count: suggestions.length });
+    return { suggestions, model: payload.model || model };
+  }
+
+  try {
+    let result;
+    try {
+      result = await callSuggest(
+        { type: 'json_schema', json_schema: { name: 'dot_suggestions', strict: true, schema: suggestionResponseSchema } },
+        'json_schema',
+      );
+    } catch (schemaError) {
+      if (schemaError.statusCode !== 400) throw schemaError;
+      result = await callSuggest({ type: 'json_object' }, 'json_object');
+    }
+
+    response.json(result);
+    logGeneration('suggest_request_success', { durationMs: Date.now() - startedAt, model: result.model, count: result.suggestions.length });
+  } catch (error) {
+    const statusCode = Number(error.statusCode ?? 500);
+    logGenerationError('suggest_request_failure', {
+      durationMs: Date.now() - startedAt,
+      statusCode,
+      message: error.message || 'Suggestion failed',
+      detail: safeString(error.detail).slice(0, 600),
+    });
+
+    response.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+      error: error.message || 'Suggestion failed',
+    });
+  }
+});
+
 app.get('/api/health', (_request, response) => {
   response.json({ ok: true, providerConfigured: Boolean(process.env.OPENROUTER_API_KEY) });
 });

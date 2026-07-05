@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
-import { generateArtifactsWithAi, generateImageWithAi } from './ai-client';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { generateArtifactsWithAi, generateImageWithAi, suggestNextArtifacts } from './ai-client';
+import type { ArtifactSuggestion } from './ai-client';
 import { createArtifactFromGenerated, cloneArtifact, fakeGenerateArtifact, nowLabel } from './artifact-factory';
 import {
   canNestArtifact as canNestArtifactInTree,
@@ -325,7 +326,12 @@ function createCanvasContext() {
   };
 }
 
-async function requestGeneratedArtifacts(value: string, mode: 'create' | 'edit' | 'regenerate', selectedArtifact?: Artifact) {
+async function requestGeneratedArtifacts(
+  value: string,
+  mode: 'create' | 'edit' | 'regenerate',
+  selectedArtifact?: Artifact,
+  preferredKind?: ArtifactSuggestion['kind'],
+) {
   const effectivePrompt = value || selectedArtifact?.prompt || selectedArtifact?.title || 'Regenerate artifact';
 
   try {
@@ -333,6 +339,7 @@ async function requestGeneratedArtifacts(value: string, mode: 'create' | 'edit' 
       prompt: effectivePrompt,
       mode,
       model: selectedTextModel.value,
+      preferredKind: preferredKind ?? null,
       selectedArtifact: selectedArtifact ?? null,
       canvasContext: createCanvasContext(),
     });
@@ -351,6 +358,109 @@ async function requestGeneratedArtifacts(value: string, mode: 'create' | 'edit' 
 function findLiveArtifact(artifactId: string) {
   return artifacts.value.find((item) => item.id === artifactId) ?? null;
 }
+
+const suggestionCache = ref<Record<string, ArtifactSuggestion[]>>({});
+const suggestionsLoadingId = ref<string | null>(null);
+const creatingSuggestionKey = ref<string | null>(null);
+let suggestionTimer: number | null = null;
+let suggestionRequestToken = 0;
+
+const activeSuggestionArtifact = computed(() => {
+  const id = selectedArtifactId.value;
+  if (!id || isGenerating.value || regeneratingArtifactId.value) return null;
+  const artifact = findLiveArtifact(id);
+  if (!artifact || artifact.parentId || deletingArtifactIds.value.includes(id)) return null;
+  return artifact;
+});
+
+const activeSuggestions = computed(() => {
+  const artifact = activeSuggestionArtifact.value;
+  if (!artifact) return [];
+  return suggestionCache.value[artifact.id] ?? [];
+});
+
+function scheduleSuggestions(artifactId: string) {
+  if (suggestionTimer) window.clearTimeout(suggestionTimer);
+  suggestionTimer = window.setTimeout(() => {
+    void loadSuggestions(artifactId);
+  }, 450);
+}
+
+async function loadSuggestions(artifactId: string) {
+  if (suggestionCache.value[artifactId]) return;
+
+  const artifact = findLiveArtifact(artifactId);
+  if (!artifact || artifact.parentId) return;
+
+  const token = ++suggestionRequestToken;
+  suggestionsLoadingId.value = artifactId;
+
+  try {
+    const suggestions = await suggestNextArtifacts({
+      artifact: {
+        kind: artifact.kind,
+        title: artifact.title,
+        prompt: artifact.prompt,
+        purpose: artifact.content.purpose ?? '',
+        summary: artifact.content.summary ?? '',
+      },
+      canvasContext: createCanvasContext(),
+    });
+
+    if (token !== suggestionRequestToken) return;
+    if (suggestions.length) suggestionCache.value = { ...suggestionCache.value, [artifactId]: suggestions };
+  } catch (error) {
+    console.warn('Suggestion request failed.', error);
+  } finally {
+    if (suggestionsLoadingId.value === artifactId) suggestionsLoadingId.value = null;
+  }
+}
+
+function ghostSuggestionPosition(artifact: Artifact, index: number, total: number) {
+  const angles = total <= 1 ? [0] : total === 2 ? [-26, 26] : [-40, 0, 40];
+  const angle = ((angles[index] ?? 0) * Math.PI) / 180;
+  const centerX = artifact.x + artifact.width / 2;
+  const centerY = artifact.y + getArtifactRenderHeight(artifact) / 2;
+  const radius = Math.max(artifact.width, getArtifactRenderHeight(artifact)) / 2 + 148;
+
+  return {
+    x: centerX + Math.cos(angle) * radius,
+    y: centerY + Math.sin(angle) * radius,
+  };
+}
+
+async function createFromSuggestion(suggestion: ArtifactSuggestion, index: number) {
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+
+  const source = activeSuggestionArtifact.value;
+  if (!source) return;
+
+  const position = ghostSuggestionPosition(source, index, activeSuggestions.value.length);
+  creatingSuggestionKey.value = `${source.id}:${index}`;
+  isGenerating.value = true;
+
+  try {
+    const generated = await requestGeneratedArtifacts(suggestion.prompt, 'create', undefined, suggestion.kind);
+    const created = placeGeneratedArtifacts(generated, suggestion.prompt, {
+      x: position.x - ARTIFACT_WIDTH / 2,
+      y: position.y - 60,
+    });
+
+    // Consume the used suggestion; the rest stay available on the source bubble.
+    const remaining = (suggestionCache.value[source.id] ?? []).filter((item) => item !== suggestion);
+    suggestionCache.value = { ...suggestionCache.value, [source.id]: remaining };
+
+    selectedArtifactId.value = created[0]?.id ?? null;
+    activeActionArtifactId.value = null;
+  } finally {
+    isGenerating.value = false;
+    creatingSuggestionKey.value = null;
+  }
+}
+
+watch(selectedArtifactId, (id) => {
+  if (id) scheduleSuggestions(id);
+});
 
 async function hydrateImageArtifact(artifactId: string) {
   const artifact = findLiveArtifact(artifactId);
@@ -972,6 +1082,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
+  if (suggestionTimer) window.clearTimeout(suggestionTimer);
   deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
   forkAnimationTimers.forEach((timerId) => window.clearTimeout(timerId));
 });
@@ -1168,6 +1279,29 @@ onUnmounted(() => {
 
         <div v-else-if="dropTargetArtifactId === artifact.id" class="nested-drop-hint">drop inside</div>
       </section>
+
+      <button
+        v-for="(suggestion, index) in activeSuggestions"
+        :key="`${activeSuggestionArtifact?.id}-${suggestion.title}`"
+        class="ghost-suggestion"
+        :class="{ 'ghost-suggestion--creating': creatingSuggestionKey === `${activeSuggestionArtifact?.id}:${index}` }"
+        type="button"
+        :title="suggestion.reason"
+        :aria-label="`Create suggested artifact: ${suggestion.title}`"
+        :style="{
+          left: `${ghostSuggestionPosition(activeSuggestionArtifact!, index, activeSuggestions.length).x}px`,
+          top: `${ghostSuggestionPosition(activeSuggestionArtifact!, index, activeSuggestions.length).y}px`,
+          '--ghost-delay': `${index * 160}ms`,
+        }"
+        @pointerdown.stop
+        @pointermove.stop
+        @pointerup.stop
+        @dblclick.stop
+        @click.stop="createFromSuggestion(suggestion, index)"
+      >
+        <span>{{ suggestion.title }}</span>
+        <small>{{ suggestion.kind }}</small>
+      </button>
 
       <button
         class="seed-dot"

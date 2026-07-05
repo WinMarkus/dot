@@ -16,6 +16,7 @@ import './ai-artifacts.css';
 import './nested-bubbles.css';
 import './model-picker.css';
 import './ghost-suggestions.css';
+import './connections.css';
 import './artifact-open-guard';
 
 installInspectorOriginTracking();

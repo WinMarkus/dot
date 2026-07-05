@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { generateArtifactsWithAi, generateImageWithAi, suggestNextArtifacts } from './ai-client';
+import { generateArtifactsWithAi, generateImageWithAi, nameConnection, suggestNextArtifacts } from './ai-client';
 import type { ArtifactSuggestion } from './ai-client';
+import type { ArtifactConnection, ConnectedInput } from './types';
 import { createArtifactFromGenerated, cloneArtifact, fakeGenerateArtifact, nowLabel } from './artifact-factory';
 import {
   canNestArtifact as canNestArtifactInTree,
@@ -331,6 +332,7 @@ async function requestGeneratedArtifacts(
   mode: 'create' | 'edit' | 'regenerate',
   selectedArtifact?: Artifact,
   preferredKind?: ArtifactSuggestion['kind'],
+  connectedInputs?: ConnectedInput[],
 ) {
   const effectivePrompt = value || selectedArtifact?.prompt || selectedArtifact?.title || 'Regenerate artifact';
 
@@ -341,6 +343,7 @@ async function requestGeneratedArtifacts(
       model: selectedTextModel.value,
       preferredKind: preferredKind ?? null,
       selectedArtifact: selectedArtifact ?? null,
+      connectedInputs: connectedInputs ?? (selectedArtifact ? buildConnectedInputs(selectedArtifact.id) : []),
       canvasContext: createCanvasContext(),
     });
 
@@ -357,6 +360,205 @@ async function requestGeneratedArtifacts(
 // a raw pre-push reference would update silently without re-rendering.
 function findLiveArtifact(artifactId: string) {
   return artifacts.value.find((item) => item.id === artifactId) ?? null;
+}
+
+const connections = ref<ArtifactConnection[]>([]);
+const staleArtifactIds = ref<string[]>([]);
+const pulsingConnectionIds = ref<string[]>([]);
+const connectDragState = ref<{ pointerId: number; fromId: string; toWorld: Point; hoverTargetId: string | null } | null>(null);
+
+function artifactVisualSize(artifact: Artifact) {
+  if (selectedArtifactId.value === artifact.id) {
+    return { w: artifact.width, h: getArtifactRenderHeight(artifact) };
+  }
+
+  const size = 148 + Math.min(getChildArtifacts(artifact.id).length, 5) * 9;
+  return { w: size, h: size };
+}
+
+function artifactCenter(artifact: Artifact): Point {
+  const { w, h } = artifactVisualSize(artifact);
+  return { x: artifact.x + w / 2, y: artifact.y + h / 2 };
+}
+
+function connectionWobble(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return ((Math.abs(hash) % 48) + 22) * (hash % 2 === 0 ? 1 : -1);
+}
+
+function tendrilGeometry(from: Point, to: Point, id: string) {
+  const midX = (from.x + to.x) / 2;
+  const midY = (from.y + to.y) / 2;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.max(Math.hypot(dx, dy), 1);
+  const wobble = connectionWobble(id);
+  const control = { x: midX + (-dy / length) * wobble, y: midY + (dx / length) * wobble };
+
+  return {
+    path: `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`,
+    // Point on the curve at t=0.5 (where the meaning pill sits).
+    mid: { x: (from.x + to.x) / 4 + control.x / 2, y: (from.y + to.y) / 4 + control.y / 2 },
+  };
+}
+
+const renderedConnections = computed(() =>
+  connections.value.flatMap((connection) => {
+    const from = findLiveArtifact(connection.fromId);
+    const to = findLiveArtifact(connection.toId);
+    if (!from || !to || from.parentId || to.parentId) return [];
+
+    const fromCenter = artifactCenter(from);
+    const toCenter = artifactCenter(to);
+    const geometry = tendrilGeometry(fromCenter, toCenter, connection.id);
+
+    return [{ connection, from: fromCenter, to: toCenter, path: geometry.path, mid: geometry.mid }];
+  }),
+);
+
+const selectedTopLevelArtifact = computed(() => {
+  const id = selectedArtifactId.value;
+  if (!id) return null;
+  const artifact = findLiveArtifact(id);
+  return artifact && !artifact.parentId ? artifact : null;
+});
+
+const liveTendrilPath = computed(() => {
+  const state = connectDragState.value;
+  if (!state) return null;
+  const from = findLiveArtifact(state.fromId);
+  if (!from) return null;
+  return tendrilGeometry(artifactCenter(from), state.toWorld, state.fromId).path;
+});
+
+function artifactContentSnippet(artifact: Artifact) {
+  const content = artifact.content;
+  return (content.text || content.markdown || content.imagePrompt || content.description || content.raw || '').slice(0, 600);
+}
+
+function buildConnectedInputs(artifactId: string): ConnectedInput[] {
+  return connections.value
+    .filter((connection) => connection.toId === artifactId)
+    .slice(0, 6)
+    .flatMap((connection) => {
+      const from = findLiveArtifact(connection.fromId);
+      if (!from) return [];
+      return [{ meaning: connection.meaning, kind: from.kind, title: from.title, content: artifactContentSnippet(from) }];
+    });
+}
+
+function markDownstreamStale(changedId: string) {
+  const downstream = connections.value
+    .filter((connection) => connection.fromId === changedId)
+    .map((connection) => connection.toId)
+    .filter((id) => id !== changedId && !staleArtifactIds.value.includes(id) && findLiveArtifact(id));
+
+  if (downstream.length) staleArtifactIds.value = [...staleArtifactIds.value, ...downstream];
+}
+
+function markStale(artifactId: string) {
+  if (!staleArtifactIds.value.includes(artifactId)) staleArtifactIds.value = [...staleArtifactIds.value, artifactId];
+}
+
+function clearStale(artifactId: string) {
+  staleArtifactIds.value = staleArtifactIds.value.filter((id) => id !== artifactId);
+}
+
+async function createConnection(fromId: string, toId: string, meaning?: string) {
+  if (fromId === toId) return;
+  if (connections.value.some((connection) => connection.fromId === fromId && connection.toId === toId)) return;
+
+  const from = findLiveArtifact(fromId);
+  const to = findLiveArtifact(toId);
+  if (!from || !to) return;
+
+  const connection: ArtifactConnection = {
+    id: crypto.randomUUID(),
+    fromId,
+    toId,
+    meaning: meaning?.toLowerCase().slice(0, 60).trim() || 'weaving…',
+    createdAt: nowLabel(),
+  };
+  connections.value.push(connection);
+
+  // A new inflow is a reason for the receiving bubble to breathe.
+  markStale(toId);
+
+  if (!meaning) {
+    const compact = (artifact: Artifact) => ({
+      kind: artifact.kind,
+      title: artifact.title,
+      summary: artifact.content.summary ?? artifact.prompt,
+    });
+
+    try {
+      const named = await nameConnection(compact(from), compact(to));
+      const live = connections.value.find((item) => item.id === connection.id);
+      if (live) live.meaning = named;
+    } catch (error) {
+      console.warn('Connection naming failed.', error);
+      const live = connections.value.find((item) => item.id === connection.id);
+      if (live) live.meaning = 'connected to';
+    }
+  }
+}
+
+function removeConnection(connectionId: string) {
+  connections.value = connections.value.filter((connection) => connection.id !== connectionId);
+}
+
+function findArtifactAtWorldPoint(point: Point, excludeId?: string) {
+  return (
+    topLevelArtifacts.value.find((candidate) => {
+      if (candidate.id === excludeId) return false;
+      const { w, h } = artifactVisualSize(candidate);
+      return point.x >= candidate.x && point.x <= candidate.x + w && point.y >= candidate.y && point.y <= candidate.y + h;
+    }) ?? null
+  );
+}
+
+function handleAuraPointerDown(event: PointerEvent, artifact: Artifact) {
+  event.stopPropagation();
+  (event.currentTarget as Element).setPointerCapture(event.pointerId);
+
+  connectDragState.value = {
+    pointerId: event.pointerId,
+    fromId: artifact.id,
+    toWorld: screenToWorld({ x: event.clientX, y: event.clientY }),
+    hoverTargetId: null,
+  };
+}
+
+function handleAuraPointerMove(event: PointerEvent) {
+  const state = connectDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  state.toWorld = screenToWorld({ x: event.clientX, y: event.clientY });
+  state.hoverTargetId = findArtifactAtWorldPoint(state.toWorld, state.fromId)?.id ?? null;
+}
+
+function handleAuraPointerUp(event: PointerEvent) {
+  const state = connectDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  connectDragState.value = null;
+  if (state.hoverTargetId) void createConnection(state.fromId, state.hoverTargetId);
+}
+
+async function breatheArtifact(artifact: Artifact) {
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+
+  pulsingConnectionIds.value = connections.value
+    .filter((connection) => connection.toId === artifact.id)
+    .map((connection) => connection.id);
+  clearStale(artifact.id);
+
+  try {
+    await regenerateArtifact(artifact);
+  } finally {
+    pulsingConnectionIds.value = [];
+  }
 }
 
 const suggestionCache = ref<Record<string, ArtifactSuggestion[]>>({});
@@ -440,7 +642,10 @@ async function createFromSuggestion(suggestion: ArtifactSuggestion, index: numbe
   isGenerating.value = true;
 
   try {
-    const generated = await requestGeneratedArtifacts(suggestion.prompt, 'create', undefined, suggestion.kind);
+    const meaning = suggestion.reason.toLowerCase().replace(/\.$/, '').slice(0, 60);
+    const generated = await requestGeneratedArtifacts(suggestion.prompt, 'create', undefined, suggestion.kind, [
+      { meaning, kind: source.kind, title: source.title, content: artifactContentSnippet(source) },
+    ]);
     const created = placeGeneratedArtifacts(generated, suggestion.prompt, {
       x: position.x - ARTIFACT_WIDTH / 2,
       y: position.y - 60,
@@ -449,6 +654,12 @@ async function createFromSuggestion(suggestion: ArtifactSuggestion, index: numbe
     // Consume the used suggestion; the rest stay available on the source bubble.
     const remaining = (suggestionCache.value[source.id] ?? []).filter((item) => item !== suggestion);
     suggestionCache.value = { ...suggestionCache.value, [source.id]: remaining };
+
+    // A hatched ghost arrives already woven to its source.
+    if (created[0]) {
+      void createConnection(source.id, created[0].id, meaning);
+      clearStale(created[0].id);
+    }
 
     selectedArtifactId.value = created[0]?.id ?? null;
     activeActionArtifactId.value = null;
@@ -528,6 +739,9 @@ function applyGeneratedArtifact(target: Artifact, generated: GeneratedArtifact, 
   target.prompt = nextPrompt;
   target.content = mapped.content;
   void hydrateImageArtifact(target.id);
+
+  // The change flows outward: connected downstream bubbles may want to breathe.
+  markDownstreamStale(target.id);
 
   generated.children?.forEach((child, index) => {
     placeGeneratedArtifactTree(
@@ -1105,6 +1319,33 @@ onUnmounted(() => {
     <div class="ambient ambient--two" />
 
     <div class="world" :style="worldTransform">
+      <svg class="tendril-layer" aria-hidden="true">
+        <defs>
+          <linearGradient
+            v-for="edge in renderedConnections"
+            :id="`tendril-grad-${edge.connection.id}`"
+            :key="`grad-${edge.connection.id}`"
+            gradientUnits="userSpaceOnUse"
+            :x1="edge.from.x"
+            :y1="edge.from.y"
+            :x2="edge.to.x"
+            :y2="edge.to.y"
+          >
+            <stop offset="0" stop-color="rgba(255, 188, 117, 0.6)" />
+            <stop offset="1" stop-color="rgba(142, 255, 135, 0.6)" />
+          </linearGradient>
+        </defs>
+        <path
+          v-for="edge in renderedConnections"
+          :key="edge.connection.id"
+          class="tendril"
+          :class="{ 'tendril--pulsing': pulsingConnectionIds.includes(edge.connection.id) }"
+          :d="edge.path"
+          :stroke="`url(#tendril-grad-${edge.connection.id})`"
+        />
+        <path v-if="liveTendrilPath" class="tendril tendril--live" :d="liveTendrilPath" />
+      </svg>
+
       <button
         v-for="marker in deletedMarkers"
         :key="marker.id"
@@ -1137,6 +1378,8 @@ onUnmounted(() => {
           'artifact-card--splitting': splittingArtifactIds.includes(artifact.id),
           'artifact-card--fork-born': forkBornArtifactIds.includes(artifact.id),
           'artifact-card--image-orb': artifact.kind === 'image' && Boolean(artifact.content.imageUrl),
+          'artifact-card--stale': staleArtifactIds.includes(artifact.id),
+          'artifact-card--connect-target': connectDragState?.hoverTargetId === artifact.id,
           },
         ]"
         :style="{
@@ -1280,6 +1523,59 @@ onUnmounted(() => {
 
         <div v-else-if="dropTargetArtifactId === artifact.id" class="nested-drop-hint">drop inside</div>
       </section>
+
+      <div
+        v-for="edge in renderedConnections"
+        :key="`meaning-${edge.connection.id}`"
+        class="tendril-meaning"
+        :style="{ left: `${edge.mid.x}px`, top: `${edge.mid.y}px` }"
+        @pointerdown.stop
+        @pointerup.stop
+      >
+        <span>{{ edge.connection.meaning }}</span>
+        <button type="button" :aria-label="`Sever connection: ${edge.connection.meaning}`" @click.stop="removeConnection(edge.connection.id)">
+          ×
+        </button>
+      </div>
+
+      <template v-for="artifact in topLevelArtifacts" :key="`breathe-${artifact.id}`">
+        <button
+          v-if="staleArtifactIds.includes(artifact.id) && regeneratingArtifactId !== artifact.id && !deletingArtifactIds.includes(artifact.id)"
+          class="breathe-badge"
+          type="button"
+          :aria-label="`Let ${artifact.title} absorb its changed connections`"
+          :style="{ left: `${artifactCenter(artifact).x}px`, top: `${artifact.y - 20}px` }"
+          @pointerdown.stop
+          @pointermove.stop
+          @pointerup.stop
+          @click.stop="breatheArtifact(artifact)"
+        >
+          breathe
+        </button>
+      </template>
+
+      <svg
+        v-if="selectedTopLevelArtifact && !isGenerating && !regeneratingArtifactId"
+        class="connect-aura"
+        :style="{
+          left: `${selectedTopLevelArtifact.x - 22}px`,
+          top: `${selectedTopLevelArtifact.y - 22}px`,
+        }"
+        :width="artifactVisualSize(selectedTopLevelArtifact).w + 44"
+        :height="artifactVisualSize(selectedTopLevelArtifact).h + 44"
+        aria-label="Drag from this ring to connect the bubble to another"
+      >
+        <rect
+          x="22"
+          y="22"
+          :width="artifactVisualSize(selectedTopLevelArtifact).w"
+          :height="artifactVisualSize(selectedTopLevelArtifact).h"
+          :rx="Math.min(64, artifactVisualSize(selectedTopLevelArtifact).h / 2)"
+          @pointerdown="handleAuraPointerDown($event, selectedTopLevelArtifact)"
+          @pointermove="handleAuraPointerMove"
+          @pointerup="handleAuraPointerUp"
+        />
+      </svg>
 
       <button
         v-for="(suggestion, index) in activeSuggestions"

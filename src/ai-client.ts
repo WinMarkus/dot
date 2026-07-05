@@ -1,4 +1,4 @@
-import type { Artifact, ArtifactKind, ArtifactPorts, GeneratedArtifact } from './types';
+import type { Artifact, ArtifactKind, ArtifactPorts, ConnectedInput, GeneratedArtifact } from './types';
 
 export type GenerateMode = 'create' | 'edit' | 'regenerate';
 
@@ -19,10 +19,36 @@ export type GenerateArtifactsRequest = {
   model?: string | null;
   preferredKind?: ArtifactKind | null;
   selectedArtifact?: Artifact | null;
+  connectedInputs?: ConnectedInput[];
   canvasContext: {
     artifacts: CanvasArtifactContext[];
   };
 };
+
+export type ConnectionEndpoint = {
+  kind: ArtifactKind;
+  title: string;
+  summary: string;
+};
+
+export async function nameConnection(from: ConnectionEndpoint, to: ConnectionEndpoint): Promise<string> {
+  const response = await fetch('/api/connect', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from, to }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Connection naming failed with ${response.status}`);
+  }
+
+  const payload = (await response.json()) as { meaning?: string };
+  if (!payload.meaning) throw new Error('Connection naming returned no meaning');
+  return payload.meaning;
+}
 
 export type GenerateArtifactsResponse = {
   artifacts: GeneratedArtifact[];

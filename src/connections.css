@@ -1,0 +1,182 @@
+.tendril-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.tendril {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 10 14;
+  opacity: 0.8;
+  animation: tendril-drift 26s linear infinite;
+}
+
+.tendril--live {
+  stroke: rgba(255, 250, 240, 0.55);
+  stroke-dasharray: 4 10;
+  animation: tendril-drift 3s linear infinite;
+}
+
+.tendril--pulsing {
+  stroke-width: 3.5;
+  opacity: 1;
+  animation: tendril-drift 1.4s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(255, 188, 117, 0.5));
+}
+
+@keyframes tendril-drift {
+  to {
+    stroke-dashoffset: -240;
+  }
+}
+
+.tendril-meaning {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: rgba(255, 250, 240, 0.6);
+  background: rgba(19, 19, 16, 0.66);
+  backdrop-filter: blur(8px);
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.tendril-meaning:hover {
+  color: rgba(255, 250, 240, 0.92);
+  border-color: rgba(255, 188, 117, 0.3);
+}
+
+.tendril-meaning button {
+  display: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: rgba(255, 180, 168, 0.9);
+  background: rgba(255, 180, 168, 0.14);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.tendril-meaning:hover button {
+  display: grid;
+  place-items: center;
+}
+
+.connect-aura {
+  position: absolute;
+  z-index: 5;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.connect-aura rect {
+  fill: none;
+  stroke: rgba(142, 255, 135, 0.2);
+  stroke-width: 18;
+  stroke-dasharray: 3 9;
+  cursor: crosshair;
+  pointer-events: stroke;
+  transition: stroke 180ms ease;
+}
+
+.connect-aura rect:hover {
+  stroke: rgba(142, 255, 135, 0.42);
+}
+
+.artifact-card--connect-target {
+  border-color: rgba(142, 255, 135, 0.55) !important;
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.42),
+    0 0 46px rgba(142, 255, 135, 0.28) !important;
+}
+
+.artifact-card--stale {
+  animation: stale-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes stale-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 24px 70px rgba(0, 0, 0, 0.35),
+      0 0 22px rgba(255, 188, 117, 0.12);
+  }
+
+  50% {
+    box-shadow:
+      0 24px 70px rgba(0, 0, 0, 0.35),
+      0 0 52px rgba(255, 188, 117, 0.34);
+  }
+}
+
+.breathe-badge {
+  position: absolute;
+  z-index: 6;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 188, 117, 0.4);
+  border-radius: 999px;
+  color: #ffdcae;
+  background: rgba(30, 24, 15, 0.78);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transform: translate(-50%, -100%);
+  animation: breathe-badge-pulse 2.6s ease-in-out infinite;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.breathe-badge:hover {
+  color: #fffaf0;
+  border-color: rgba(255, 188, 117, 0.8);
+  box-shadow: 0 0 30px rgba(255, 188, 117, 0.35);
+}
+
+@keyframes breathe-badge-pulse {
+  0%,
+  100% {
+    scale: 1;
+  }
+
+  50% {
+    scale: 1.07;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tendril,
+  .tendril--live,
+  .tendril--pulsing,
+  .artifact-card--stale,
+  .breathe-badge {
+    animation: none;
+  }
+}

@@ -78,6 +78,21 @@ export type GeneratedArtifact = {
   children?: GeneratedArtifact[];
 };
 
+export type ArtifactConnection = {
+  id: string;
+  fromId: string;
+  toId: string;
+  meaning: string;
+  createdAt: string;
+};
+
+export type ConnectedInput = {
+  meaning: string;
+  kind: ArtifactKind;
+  title: string;
+  content: string;
+};
+
 export type DeletedMarker = {
   id: string;
   artifact: Artifact;

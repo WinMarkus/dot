@@ -113,6 +113,8 @@ Return ONLY valid JSON:
   ]
 }
 
+If connectedInputs are provided, they are living context flowing into this artifact through its connections on the canvas. Weave them in meaningfully: a forest connected to trees knows those trees; a component connected to an image and a text should actually use them.
+
 Hard rules:
 1. If preferredKind is given, follow it unless the prompt clearly contradicts it.
 2. If the user explicitly asks for an image, video, text, or component, return exactly ONE primary artifact of that kind.
@@ -212,6 +214,14 @@ function buildUserPayload(body) {
     prompt: safeString(body?.prompt),
     preferredKind,
     selectedArtifact: compactSelectedArtifact(body?.selectedArtifact),
+    connectedInputs: safeArray(body?.connectedInputs)
+      .slice(0, 6)
+      .map((input) => ({
+        meaning: safeString(input?.meaning).slice(0, 80),
+        kind: safeString(input?.kind, 'object'),
+        title: safeString(input?.title).slice(0, 60),
+        content: safeString(input?.content).slice(0, 600),
+      })),
     canvasContext: compactCanvasContext(body?.canvasContext),
   };
 }
@@ -765,6 +775,99 @@ app.post('/api/suggest', async (request, response) => {
 
     response.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
       error: error.message || 'Suggestion failed',
+    });
+  }
+});
+
+app.post('/api/connect', async (request, response) => {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    response.status(503).json({ error: 'OPENROUTER_API_KEY is not configured' });
+    return;
+  }
+
+  const from = request.body?.from;
+  const to = request.body?.to;
+  if (!from || !to || typeof from !== 'object' || typeof to !== 'object') {
+    response.status(400).json({ error: 'from and to artifacts are required' });
+    return;
+  }
+
+  const model = DEFAULT_SUGGEST_MODEL();
+  const compact = (artifact) => ({
+    kind: safeString(artifact.kind, 'object'),
+    title: safeString(artifact.title).slice(0, 60),
+    summary: safeString(artifact.summary || artifact.prompt).slice(0, 240),
+  });
+
+  const requestBody = (responseFormat) => ({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: `You name relationships between artifacts on Dot, a living canvas where anything can connect to anything.
+
+Given FROM (the giving end) and TO (the receiving end), respond with the meaning of this connection: a 2-4 word phrase, lowercase, poetic but precise, describing how FROM flows into TO. Examples: "grows within", "gives words to", "sets the mood of", "feeds data into", "echoes the pattern of".
+
+Return ONLY valid JSON: {"meaning": "..."}`,
+      },
+      { role: 'user', content: JSON.stringify({ from: compact(from), to: compact(to) }) },
+    ],
+    ...(responseFormat ? { response_format: responseFormat } : {}),
+    temperature: 0.7,
+    max_tokens: 400,
+  });
+
+  async function callConnect(responseFormat) {
+    const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.PUBLIC_APP_URL || 'http://localhost:3000',
+        'X-Title': 'Dot',
+      },
+      body: JSON.stringify(requestBody(responseFormat)),
+    });
+
+    if (!openRouterResponse.ok) {
+      const detail = await openRouterResponse.text();
+      const error = new Error(`OpenRouter connect request failed: ${openRouterResponse.status}`);
+      error.statusCode = openRouterResponse.status;
+      error.detail = detail.slice(0, 600);
+      throw error;
+    }
+
+    const payload = await openRouterResponse.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    const parsed = JSON.parse(extractJsonObject(safeString(content, '{}')));
+    const meaning = safeString(parsed?.meaning).toLowerCase().slice(0, 60).trim();
+
+    if (!meaning) {
+      const error = new Error('OpenRouter connect response contained no meaning');
+      error.statusCode = 502;
+      throw error;
+    }
+
+    return { meaning, model: payload.model || model };
+  }
+
+  try {
+    let result;
+    try {
+      result = await callConnect({ type: 'json_object' });
+    } catch (jsonError) {
+      if (jsonError.statusCode !== 400 && jsonError.statusCode !== 404) throw jsonError;
+      result = await callConnect(null);
+    }
+
+    response.json(result);
+    logGeneration('connect_success', { model: result.model, meaning: result.meaning });
+  } catch (error) {
+    const statusCode = Number(error.statusCode ?? 500);
+    logGenerationError('connect_failure', { statusCode, message: error.message || 'Connect failed' });
+    response.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+      error: error.message || 'Connect failed',
     });
   }
 });

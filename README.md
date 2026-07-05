@@ -18,6 +18,11 @@ A minimal generative creation canvas prototype.
 - generated artifacts materialize onto the canvas
 - generated artifacts are draggable
 - newly created artifacts are selected automatically
+- bubbles connect: drag from the dashed aura ring around the selected bubble onto any other bubble to weave a tendril between them; the AI names what the connection means ("gives words to", "grows within")
+- connections are living context: whenever a bubble (re)generates, the content of its connected upstream bubbles flows in as input
+- when a bubble changes, its downstream neighbors glow stale and grow a "breathe" badge — one click lets them regenerate and absorb the change, rippling onward by invitation
+- tendrils render as organic drifting filaments (warm at the giving end, green at the receiving end); the meaning pill at the midpoint can sever the connection
+- artifacts hatched from ghost suggestions arrive pre-connected to their source
 - the selected artifact grows ghost suggestions: up to three faint dashed bubbles proposing the next artifact to create (a cheap model imagines expansions, complements, and transformations); one click generates it for real at the ghost's position
 - selected artifacts show a small action dot
 - hover or focus the action dot on desktop to bloom action sub-dots
@@ -50,7 +55,7 @@ A minimal generative creation canvas prototype.
 
 ## Source structure
 
-- `server/index.mjs` serves the built app and exposes `POST /api/generate`, `POST /api/generate-image`, `POST /api/suggest`, and `GET /api/models`
+- `server/index.mjs` serves the built app and exposes `POST /api/generate`, `POST /api/generate-image`, `POST /api/suggest`, `POST /api/connect`, and `GET /api/models`
 - `src/model-picker.ts` loads the curated model catalog and persists the user's model choices
 - `src/vue-sfc.ts` parses generated Vue single-file components into template/script/style blocks
 - `src/types.ts` contains shared domain and interaction types

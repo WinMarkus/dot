@@ -14,6 +14,7 @@ import './inspector-genie.css';
 import './fork-split.css';
 import './ai-artifacts.css';
 import './nested-bubbles.css';
+import './model-picker.css';
 import './artifact-open-guard';
 
 installInspectorOriginTracking();

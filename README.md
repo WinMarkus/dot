@@ -39,6 +39,7 @@ A minimal generative creation canvas prototype.
 - red deleted markers are draggable
 - tapping a deleted marker revitalises the artifact at its original position
 - deleted markers can be cleared with the clear deleted dots control
+- the bottom-right status pill opens a model picker: choose the OpenRouter model for artifact generation and image generation separately (curated live from the OpenRouter catalog, persisted in localStorage)
 - canvas controls live behind the bottom-left help dot
 - drag the background to pan the camera
 - mouse wheel zooms the camera
@@ -47,7 +48,8 @@ A minimal generative creation canvas prototype.
 
 ## Source structure
 
-- `server/index.mjs` serves the built app and exposes `POST /api/generate` and `POST /api/generate-image`
+- `server/index.mjs` serves the built app and exposes `POST /api/generate`, `POST /api/generate-image`, and `GET /api/models`
+- `src/model-picker.ts` loads the curated model catalog and persists the user's model choices
 - `src/vue-sfc.ts` parses generated Vue single-file components into template/script/style blocks
 - `src/types.ts` contains shared domain and interaction types
 - `src/constants.ts` contains core sizing, zoom, and transition constants
@@ -82,7 +84,7 @@ OPENROUTER_API_KEY=your_key_here npm start
 npm run dev
 ```
 
-Optional environment variables:
+Optional environment variables (the env models act as defaults; users can pick a different model per browser via the on-site model picker):
 
 ```bash
 OPENROUTER_MODEL=openai/gpt-4o-mini

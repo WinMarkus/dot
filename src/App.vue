@@ -18,6 +18,8 @@ import {
   worldToScreen as convertWorldToScreen,
   zoomCameraAt,
 } from './geometry';
+import { fetchModelCatalog, formatModelPrice, loadSavedModel, saveModel, shortModelName } from './model-picker';
+import type { ModelCatalog } from './model-picker';
 import type { Artifact, CameraState, DeletedMarker, DragState, GeneratedArtifact, Point, PromptMode, Viewport } from './types';
 
 const FORK_SPLIT_MS = 840;
@@ -33,6 +35,39 @@ const promptInput = ref<HTMLInputElement | null>(null);
 const inspectorPanel = ref<HTMLElement | null>(null);
 const inspectorEditPrompt = ref('');
 const generationStatus = ref<string | null>(null);
+const modelCatalog = ref<ModelCatalog | null>(null);
+const selectedTextModel = ref<string | null>(loadSavedModel('text'));
+const selectedImageModel = ref<string | null>(loadSavedModel('image'));
+const isModelPickerOpen = ref(false);
+
+const currentTextModelId = computed(() => selectedTextModel.value ?? modelCatalog.value?.defaults.text ?? null);
+const currentImageModelId = computed(() => selectedImageModel.value ?? modelCatalog.value?.defaults.image ?? null);
+
+const statusLabel = computed(() => {
+  if (generationStatus.value) return generationStatus.value;
+  return currentTextModelId.value ? `ai · ${shortModelName(currentTextModelId.value)}` : 'ai models';
+});
+
+function toggleModelPicker() {
+  isModelPickerOpen.value = !isModelPickerOpen.value;
+}
+
+function selectTextModel(id: string) {
+  selectedTextModel.value = id;
+  saveModel('text', id);
+  generationStatus.value = null;
+}
+
+function selectImageModel(id: string) {
+  selectedImageModel.value = id;
+  saveModel('image', id);
+}
+
+function handleGlobalPointerDownForPicker(event: PointerEvent) {
+  if (!isModelPickerOpen.value) return;
+  const target = event.target as HTMLElement | null;
+  if (!target?.closest('.model-dock')) isModelPickerOpen.value = false;
+}
 
 const artifacts = ref<Artifact[]>([]);
 const deletingArtifactIds = ref<string[]>([]);
@@ -297,6 +332,7 @@ async function requestGeneratedArtifacts(value: string, mode: 'create' | 'edit' 
     const result = await generateArtifactsWithAi({
       prompt: effectivePrompt,
       mode,
+      model: selectedTextModel.value,
       selectedArtifact: selectedArtifact ?? null,
       canvasContext: createCanvasContext(),
     });
@@ -328,7 +364,7 @@ async function hydrateImageArtifact(artifactId: string) {
   artifact.content.imageStatus = 'pending';
 
   try {
-    const result = await generateImageWithAi(artifact.content.imagePrompt);
+    const result = await generateImageWithAi(artifact.content.imagePrompt, selectedImageModel.value);
     const live = findLiveArtifact(artifactId);
     if (!live || live.content !== artifact.content) return;
 
@@ -927,10 +963,15 @@ function handleKeydown(event: KeyboardEvent) {
 onMounted(() => {
   resetCamera();
   window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
+  void fetchModelCatalog().then((catalog) => {
+    modelCatalog.value = catalog;
+  });
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
   deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
   forkAnimationTimers.forEach((timerId) => window.clearTimeout(timerId));
 });
@@ -1143,7 +1184,55 @@ onUnmounted(() => {
       clear deleted dots
     </button>
 
-    <div v-if="generationStatus" class="generation-status">{{ generationStatus }}</div>
+    <div class="model-dock" @pointerdown.stop @pointermove.stop @pointerup.stop @dblclick.stop @wheel.stop>
+      <button
+        class="generation-status generation-status--button"
+        type="button"
+        aria-label="Choose AI models"
+        :aria-expanded="isModelPickerOpen"
+        @click="toggleModelPicker"
+      >
+        {{ statusLabel }}
+      </button>
+
+      <div v-if="isModelPickerOpen" class="model-picker" aria-label="Model selection">
+        <template v-if="modelCatalog">
+          <div class="model-picker__group" aria-label="Artifact generation models">
+            <small>artifacts</small>
+            <button
+              v-for="option in modelCatalog.textModels"
+              :key="option.id"
+              type="button"
+              class="model-picker__option"
+              :class="{ 'model-picker__option--active': option.id === currentTextModelId }"
+              :title="option.id"
+              @click="selectTextModel(option.id)"
+            >
+              <span>{{ shortModelName(option.id) }}</span>
+              <small>{{ formatModelPrice(option) }}</small>
+            </button>
+          </div>
+
+          <div class="model-picker__group" aria-label="Image generation models">
+            <small>images</small>
+            <button
+              v-for="option in modelCatalog.imageModels"
+              :key="option.id"
+              type="button"
+              class="model-picker__option"
+              :class="{ 'model-picker__option--active': option.id === currentImageModelId }"
+              :title="option.id"
+              @click="selectImageModel(option.id)"
+            >
+              <span>{{ shortModelName(option.id) }}</span>
+              <small v-if="option.id.endsWith(':free')">free</small>
+            </button>
+          </div>
+        </template>
+
+        <p v-else class="model-picker__empty">model catalog unavailable</p>
+      </div>
+    </div>
 
     <div class="canvas-help">
       <button class="canvas-help__trigger" type="button" aria-label="Show canvas controls">?</button>

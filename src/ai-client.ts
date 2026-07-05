@@ -16,6 +16,7 @@ export type CanvasArtifactContext = {
 export type GenerateArtifactsRequest = {
   prompt: string;
   mode: GenerateMode;
+  model?: string | null;
   preferredKind?: ArtifactKind | null;
   selectedArtifact?: Artifact | null;
   canvasContext: {
@@ -35,13 +36,13 @@ export type GenerateImageResponse = {
   model?: string;
 };
 
-export async function generateImageWithAi(prompt: string): Promise<GenerateImageResponse> {
+export async function generateImageWithAi(prompt: string, model?: string | null): Promise<GenerateImageResponse> {
   const response = await fetch('/api/generate-image', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, model: model ?? undefined }),
   });
 
   if (!response.ok) {

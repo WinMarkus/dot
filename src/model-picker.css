@@ -1,0 +1,130 @@
+.model-dock {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 18;
+  display: grid;
+  justify-items: end;
+}
+
+/* The pill keeps its look but is positioned by the dock now. */
+.model-dock .generation-status {
+  position: static;
+  right: auto;
+  bottom: auto;
+}
+
+.generation-status--button {
+  appearance: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.generation-status--button:hover,
+.generation-status--button[aria-expanded="true"] {
+  border-color: rgba(255, 188, 117, 0.44);
+  color: rgba(255, 250, 240, 0.92);
+  box-shadow:
+    0 16px 42px rgba(0, 0, 0, 0.22),
+    0 0 22px rgba(255, 188, 117, 0.16);
+}
+
+.model-picker {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  display: grid;
+  gap: 14px;
+  width: 252px;
+  max-height: min(420px, 60vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  padding: 14px;
+  border: 1px solid rgba(255, 188, 117, 0.18);
+  border-radius: 24px;
+  background: rgba(19, 19, 16, 0.88);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(18px);
+}
+
+.model-picker__group {
+  display: grid;
+  gap: 3px;
+}
+
+.model-picker__group > small {
+  margin: 0 10px 4px;
+  color: rgba(255, 250, 240, 0.48);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.model-picker__option {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: rgba(255, 250, 240, 0.85);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: left;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.model-picker__option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-picker__option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.model-picker__option--active {
+  border-color: rgba(255, 188, 117, 0.4);
+  color: #ffdcae;
+  background: rgba(255, 188, 117, 0.12);
+}
+
+.model-picker__option small {
+  flex-shrink: 0;
+  color: rgba(255, 250, 240, 0.45);
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.model-picker__empty {
+  margin: 0;
+  padding: 4px 10px;
+  color: rgba(255, 250, 240, 0.55);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 760px) {
+  .model-dock {
+    right: 14px;
+    bottom: 58px;
+  }
+
+  .model-picker {
+    width: min(252px, calc(100vw - 40px));
+  }
+}

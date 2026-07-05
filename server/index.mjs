@@ -278,6 +278,99 @@ function logGenerationError(event, data = {}) {
   console.error(`[dot:generate] ${event}`, JSON.stringify(data));
 }
 
+const DEFAULT_TEXT_MODEL = () => process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+const DEFAULT_IMAGE_MODEL = () => process.env.OPENROUTER_IMAGE_MODEL || 'google/gemini-3.1-flash-lite-image';
+
+const MODEL_CATALOG_TTL_MS = 60 * 60 * 1000;
+let modelCatalogCache = { fetchedAt: 0, catalog: null };
+
+const TEXT_MODEL_FAMILIES = [
+  /^openai\/gpt-/,
+  /^anthropic\/claude-/,
+  /^google\/gemini-/,
+  /^deepseek\//,
+  /^meta-llama\/llama-/,
+  /^mistralai\//,
+  /^x-ai\/grok-/,
+  /^qwen\/qwen/,
+];
+
+function toModelOption(model) {
+  return {
+    id: safeString(model?.id),
+    name: safeString(model?.name, safeString(model?.id)),
+    promptPricePerMillion: Number(model?.pricing?.prompt ?? 0) * 1_000_000,
+  };
+}
+
+async function fetchModelCatalog() {
+  const response = await fetch('https://openrouter.ai/api/v1/models');
+  if (!response.ok) throw new Error(`OpenRouter models request failed: ${response.status}`);
+
+  const payload = await response.json();
+  const models = safeArray(payload?.data).filter((model) => safeString(model?.id));
+  const byNewest = (a, b) => (b?.created ?? 0) - (a?.created ?? 0);
+
+  const imageModels = models
+    .filter((model) => safeArray(model?.architecture?.output_modalities).includes('image'))
+    .sort(byNewest)
+    .map(toModelOption);
+
+  const textCandidates = models.filter((model) => {
+    const outputs = safeArray(model?.architecture?.output_modalities);
+    return outputs.includes('text') && !outputs.includes('image');
+  });
+
+  const textModels = TEXT_MODEL_FAMILIES.flatMap((family) =>
+    textCandidates
+      .filter((model) => family.test(model.id))
+      .sort(byNewest)
+      .slice(0, 2)
+      .map(toModelOption),
+  );
+
+  return { textModels, imageModels };
+}
+
+async function getModelCatalog() {
+  const isFresh = modelCatalogCache.catalog && Date.now() - modelCatalogCache.fetchedAt < MODEL_CATALOG_TTL_MS;
+  if (isFresh) return modelCatalogCache.catalog;
+
+  try {
+    const catalog = await fetchModelCatalog();
+    modelCatalogCache = { fetchedAt: Date.now(), catalog };
+    logGeneration('model_catalog_refreshed', { textModels: catalog.textModels.length, imageModels: catalog.imageModels.length });
+    return catalog;
+  } catch (error) {
+    logGenerationError('model_catalog_failure', { message: error.message });
+    // A stale catalog beats no catalog.
+    return modelCatalogCache.catalog;
+  }
+}
+
+function ensureModelInList(list, id) {
+  if (id && !list.some((option) => option.id === id)) {
+    // No pricing claim here — the price is simply unknown for injected defaults.
+    list.unshift({ id, name: id });
+  }
+}
+
+async function resolveRequestedModel(requested, kind) {
+  const id = safeString(requested).trim().slice(0, 120);
+  if (!id) return null;
+  if (id === DEFAULT_TEXT_MODEL() || id === DEFAULT_IMAGE_MODEL()) return id;
+
+  const catalog = await getModelCatalog();
+  // Without a catalog we cannot validate; trust the client on its own deployment.
+  if (!catalog) return id;
+
+  const list = kind === 'image' ? catalog.imageModels : catalog.textModels;
+  if (list.some((option) => option.id === id)) return id;
+
+  logGenerationError('model_rejected', { requested: id, kind });
+  return null;
+}
+
 function buildOpenRouterRequestBody(model, body, responseFormat) {
   return {
     model,
@@ -359,7 +452,7 @@ function parseOpenRouterPayload(payload, model, providerMode) {
   };
 }
 
-async function callOpenRouter(body) {
+async function callOpenRouter(body, modelOverride) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     const error = new Error('OPENROUTER_API_KEY is not configured');
@@ -367,7 +460,7 @@ async function callOpenRouter(body) {
     throw error;
   }
 
-  const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+  const model = modelOverride || DEFAULT_TEXT_MODEL();
   const strictJsonSchemaFormat = {
     type: 'json_schema',
     json_schema: {
@@ -402,7 +495,7 @@ async function callOpenRouter(body) {
   }
 }
 
-async function callOpenRouterImage(prompt) {
+async function callOpenRouterImage(prompt, modelOverride) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     const error = new Error('OPENROUTER_API_KEY is not configured');
@@ -410,7 +503,7 @@ async function callOpenRouterImage(prompt) {
     throw error;
   }
 
-  const model = process.env.OPENROUTER_IMAGE_MODEL || 'google/gemini-3.1-flash-lite-image';
+  const model = modelOverride || DEFAULT_IMAGE_MODEL();
 
   logGeneration('image_attempt', { model, promptLength: prompt.length });
 
@@ -470,7 +563,8 @@ app.post('/api/generate-image', async (request, response) => {
   }
 
   try {
-    const result = await callOpenRouterImage(prompt);
+    const modelOverride = await resolveRequestedModel(request.body?.model, 'image');
+    const result = await callOpenRouterImage(prompt, modelOverride);
     response.json(result);
     logGeneration('image_request_success', { durationMs: Date.now() - startedAt, model: result.model });
   } catch (error) {
@@ -491,6 +585,18 @@ app.post('/api/generate-image', async (request, response) => {
 
 app.get('/api/health', (_request, response) => {
   response.json({ ok: true, providerConfigured: Boolean(process.env.OPENROUTER_API_KEY) });
+});
+
+app.get('/api/models', async (_request, response) => {
+  const defaults = { text: DEFAULT_TEXT_MODEL(), image: DEFAULT_IMAGE_MODEL() };
+  const catalog = await getModelCatalog();
+  const textModels = [...(catalog?.textModels ?? [])];
+  const imageModels = [...(catalog?.imageModels ?? [])];
+
+  ensureModelInList(textModels, defaults.text);
+  ensureModelInList(imageModels, defaults.image);
+
+  response.json({ textModels, imageModels, defaults });
 });
 
 app.post('/api/generate', async (request, response) => {
@@ -515,13 +621,17 @@ app.post('/api/generate', async (request, response) => {
       return;
     }
 
-    const result = await callOpenRouter({
-      prompt,
-      mode,
-      preferredKind,
-      selectedArtifact: request.body?.selectedArtifact ?? null,
-      canvasContext: request.body?.canvasContext ?? { artifacts: [] },
-    });
+    const modelOverride = await resolveRequestedModel(request.body?.model, 'text');
+    const result = await callOpenRouter(
+      {
+        prompt,
+        mode,
+        preferredKind,
+        selectedArtifact: request.body?.selectedArtifact ?? null,
+        canvasContext: request.body?.canvasContext ?? { artifacts: [] },
+      },
+      modelOverride,
+    );
 
     response.json(result);
     logGeneration('request_success', {

@@ -768,8 +768,6 @@ function handleInspectorPointerUp(event: PointerEvent) {
 function handleWorkspacePointerDown(event: PointerEvent) {
   if (!isWorkspaceGestureTarget(event)) return;
 
-  closeTransientUi();
-
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
 
@@ -804,7 +802,10 @@ function handleWorkspacePointerUp(event: PointerEvent) {
   (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
   panState.value = null;
 
+  // Only a genuine background click dismisses open bubbles — a pan keeps them.
   if (!state.moved) {
+    closeTransientUi();
+
     if (event.detail >= 2) {
       openPromptAtScreenPoint({ x: state.startPointerX, y: state.startPointerY });
       return;

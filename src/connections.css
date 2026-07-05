@@ -8,32 +8,44 @@
   pointer-events: none;
 }
 
-.tendril {
+/* A tendril is layered light: a wide blurred underglow, a thin bright core,
+   and small motes of light drifting toward the receiving bubble. */
+.tendril__glow {
   fill: none;
-  stroke-width: 2.5;
+  stroke-width: 9;
   stroke-linecap: round;
-  stroke-dasharray: 10 14;
-  opacity: 0.8;
-  animation: tendril-drift 26s linear infinite;
+  opacity: 0.22;
+  filter: blur(5px);
 }
 
-.tendril--live {
-  stroke: rgba(255, 250, 240, 0.55);
-  stroke-dasharray: 4 10;
-  animation: tendril-drift 3s linear infinite;
+.tendril__core {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  opacity: 0.55;
 }
 
-.tendril--pulsing {
-  stroke-width: 3.5;
-  opacity: 1;
-  animation: tendril-drift 1.4s linear infinite;
-  filter: drop-shadow(0 0 8px rgba(255, 188, 117, 0.5));
+.tendril__mote {
+  fill: rgba(255, 243, 199, 0.95);
+  filter: drop-shadow(0 0 7px rgba(255, 188, 117, 0.85));
 }
 
-@keyframes tendril-drift {
-  to {
-    stroke-dashoffset: -240;
-  }
+.tendril--pulsing .tendril__glow {
+  opacity: 0.45;
+  stroke-width: 13;
+}
+
+.tendril--pulsing .tendril__core {
+  opacity: 0.9;
+  stroke-width: 2.6;
+}
+
+.tendril__live {
+  fill: none;
+  stroke: rgba(255, 250, 240, 0.4);
+  stroke-width: 2;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(142, 255, 135, 0.4));
 }
 
 .tendril-meaning {
@@ -43,10 +55,10 @@
   align-items: center;
   gap: 4px;
   padding: 4px 9px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 0;
   border-radius: 999px;
-  color: rgba(255, 250, 240, 0.6);
-  background: rgba(19, 19, 16, 0.66);
+  color: rgba(255, 250, 240, 0.55);
+  background: rgba(19, 19, 16, 0.5);
   backdrop-filter: blur(8px);
   font-size: 0.62rem;
   font-weight: 700;
@@ -56,12 +68,12 @@
   transform: translate(-50%, -50%);
   transition:
     color 160ms ease,
-    border-color 160ms ease;
+    background 160ms ease;
 }
 
 .tendril-meaning:hover {
   color: rgba(255, 250, 240, 0.92);
-  border-color: rgba(255, 188, 117, 0.3);
+  background: rgba(19, 19, 16, 0.78);
 }
 
 .tendril-meaning button {
@@ -84,25 +96,47 @@
   place-items: center;
 }
 
-.connect-aura {
+/* The weave halo: no outline, just breathing light around the chosen bubble.
+   Drag anywhere in the glow to pull a tendril out of it. */
+.weave-halo {
   position: absolute;
-  z-index: 5;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.connect-aura rect {
-  fill: none;
-  stroke: rgba(142, 255, 135, 0.2);
-  stroke-width: 18;
-  stroke-dasharray: 3 9;
+  z-index: 0;
+  background: radial-gradient(
+    closest-side,
+    transparent 52%,
+    rgba(142, 255, 135, 0.05) 62%,
+    rgba(142, 255, 135, 0.14) 74%,
+    rgba(142, 255, 135, 0.1) 84%,
+    transparent 100%
+  );
   cursor: crosshair;
-  pointer-events: stroke;
-  transition: stroke 180ms ease;
+  filter: blur(3px);
+  animation: weave-halo-breathe 4.6s ease-in-out infinite;
 }
 
-.connect-aura rect:hover {
-  stroke: rgba(142, 255, 135, 0.42);
+.weave-halo--weaving {
+  background: radial-gradient(
+    closest-side,
+    transparent 52%,
+    rgba(142, 255, 135, 0.1) 62%,
+    rgba(142, 255, 135, 0.26) 74%,
+    rgba(142, 255, 135, 0.16) 84%,
+    transparent 100%
+  );
+  animation: none;
+}
+
+@keyframes weave-halo-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+    scale: 0.985;
+  }
+
+  50% {
+    opacity: 1;
+    scale: 1.02;
+  }
 }
 
 .artifact-card--connect-target {
@@ -112,69 +146,89 @@
     0 0 46px rgba(142, 255, 135, 0.28) !important;
 }
 
+/* A stale bubble inhales and exhales slowly, asking to absorb what changed. */
 .artifact-card--stale {
-  animation: stale-breathe 2.6s ease-in-out infinite;
+  animation: stale-swell 5.2s ease-in-out infinite;
 }
 
-@keyframes stale-breathe {
-  0%,
-  100% {
-    box-shadow:
-      0 24px 70px rgba(0, 0, 0, 0.35),
-      0 0 22px rgba(255, 188, 117, 0.12);
-  }
-
-  50% {
-    box-shadow:
-      0 24px 70px rgba(0, 0, 0, 0.35),
-      0 0 52px rgba(255, 188, 117, 0.34);
-  }
-}
-
-.breathe-badge {
-  position: absolute;
-  z-index: 6;
-  padding: 6px 12px;
-  border: 1px solid rgba(255, 188, 117, 0.4);
-  border-radius: 999px;
-  color: #ffdcae;
-  background: rgba(30, 24, 15, 0.78);
-  backdrop-filter: blur(10px);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 0.64rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  transform: translate(-50%, -100%);
-  animation: breathe-badge-pulse 2.6s ease-in-out infinite;
-  transition:
-    color 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.breathe-badge:hover {
-  color: #fffaf0;
-  border-color: rgba(255, 188, 117, 0.8);
-  box-shadow: 0 0 30px rgba(255, 188, 117, 0.35);
-}
-
-@keyframes breathe-badge-pulse {
+@keyframes stale-swell {
   0%,
   100% {
     scale: 1;
+    filter: brightness(1);
   }
 
   50% {
-    scale: 1.07;
+    scale: 1.035;
+    filter: brightness(1.12) drop-shadow(0 0 26px rgba(255, 188, 117, 0.22));
+  }
+}
+
+/* The breathe firefly: a warm mote hovering above the bubble; coming close
+   makes it unfold into a quiet word. */
+.breathe-badge {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: transparent;
+  background: radial-gradient(circle at 42% 38%, rgba(255, 243, 199, 0.95), rgba(255, 188, 117, 0.55) 70%, transparent 100%);
+  box-shadow: 0 0 18px rgba(255, 188, 117, 0.55);
+  cursor: pointer;
+  font-family: inherit;
+  transform: translate(-50%, -100%);
+  animation: breathe-firefly 4.2s ease-in-out infinite;
+  transition:
+    width 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 200ms ease 120ms,
+    background 260ms ease,
+    box-shadow 260ms ease;
+}
+
+.breathe-badge span {
+  font-size: 0.68rem;
+  font-style: italic;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.breathe-badge:hover,
+.breathe-badge:focus-visible {
+  width: 86px;
+  height: 30px;
+  color: #2a1f10;
+  background: radial-gradient(circle at 42% 38%, rgba(255, 243, 199, 0.98), rgba(255, 200, 130, 0.92) 80%);
+  box-shadow: 0 0 34px rgba(255, 188, 117, 0.7);
+  animation-play-state: paused;
+}
+
+@keyframes breathe-firefly {
+  0%,
+  100% {
+    translate: 0 0;
+    box-shadow: 0 0 14px rgba(255, 188, 117, 0.4);
+  }
+
+  33% {
+    translate: 3px -7px;
+    box-shadow: 0 0 24px rgba(255, 188, 117, 0.65);
+  }
+
+  66% {
+    translate: -4px -3px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tendril,
-  .tendril--live,
-  .tendril--pulsing,
+  .weave-halo,
   .artifact-card--stale,
   .breathe-badge {
     animation: none;

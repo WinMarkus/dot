@@ -351,7 +351,7 @@ async function requestGeneratedArtifacts(
     return result.artifacts.map((artifact) => addGenerationMeta(artifact, result.provider, result.model));
   } catch (error) {
     console.warn('AI generation failed. Falling back to local generator.', error);
-    generationStatus.value = 'local fallback';
+    generationStatus.value = 'dreaming offline';
     return [fakeGenerateArtifact(effectivePrompt, selectedArtifact)];
   }
 }
@@ -381,26 +381,62 @@ function artifactCenter(artifact: Artifact): Point {
   return { x: artifact.x + w / 2, y: artifact.y + h / 2 };
 }
 
-function connectionWobble(id: string) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return ((Math.abs(hash) % 48) + 22) * (hash % 2 === 0 ? 1 : -1);
+// A slow shared clock that lets tendrils undulate and motes drift.
+const tendrilPhase = ref(0);
+let tendrilRaf = 0;
+
+function animateTendrils(timestamp: number) {
+  tendrilPhase.value = timestamp / 1000;
+  tendrilRaf = requestAnimationFrame(animateTendrils);
 }
 
-function tendrilGeometry(from: Point, to: Point, id: string) {
+function idHash(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return hash;
+}
+
+function quadraticPoint(from: Point, control: Point, to: Point, t: number): Point {
+  const u = 1 - t;
+  return {
+    x: u * u * from.x + 2 * u * t * control.x + t * t * to.x,
+    y: u * u * from.y + 2 * u * t * control.y + t * t * to.y,
+  };
+}
+
+function tendrilGeometry(from: Point, to: Point, id: string, phase: number) {
   const midX = (from.x + to.x) / 2;
   const midY = (from.y + to.y) / 2;
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const length = Math.max(Math.hypot(dx, dy), 1);
-  const wobble = connectionWobble(id);
+  const hash = idHash(id);
+  const baseWobble = ((Math.abs(hash) % 48) + 26) * (hash % 2 === 0 ? 1 : -1);
+  const sway = Math.sin(phase * 0.55 + (Math.abs(hash) % 63)) * Math.min(14, length / 14);
+  const wobble = baseWobble + sway;
   const control = { x: midX + (-dy / length) * wobble, y: midY + (dx / length) * wobble };
 
   return {
+    control,
     path: `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`,
-    // Point on the curve at t=0.5 (where the meaning pill sits).
-    mid: { x: (from.x + to.x) / 4 + control.x / 2, y: (from.y + to.y) / 4 + control.y / 2 },
+    mid: quadraticPoint(from, control, to, 0.5),
   };
+}
+
+function tendrilMotes(from: Point, control: Point, to: Point, id: string, phase: number, pulsing: boolean) {
+  const hash = Math.abs(idHash(id));
+  const count = pulsing ? 4 : 2;
+  const speed = pulsing ? 0.34 : 0.085;
+
+  const motes = [];
+  for (let i = 0; i < count; i++) {
+    const t = (phase * speed + i / count + (hash % 97) / 97) % 1;
+    const point = quadraticPoint(from, control, to, t);
+    // Motes are born and fade at the ends, glowing brightest mid-journey.
+    const life = Math.sin(t * Math.PI);
+    motes.push({ key: `${id}-${i}`, x: point.x, y: point.y, opacity: 0.25 + life * 0.75, r: pulsing ? 3.2 : 2.4 });
+  }
+  return motes;
 }
 
 const renderedConnections = computed(() =>
@@ -411,10 +447,35 @@ const renderedConnections = computed(() =>
 
     const fromCenter = artifactCenter(from);
     const toCenter = artifactCenter(to);
-    const geometry = tendrilGeometry(fromCenter, toCenter, connection.id);
+    const pulsing = pulsingConnectionIds.value.includes(connection.id);
+    const geometry = tendrilGeometry(fromCenter, toCenter, connection.id, tendrilPhase.value);
 
-    return [{ connection, from: fromCenter, to: toCenter, path: geometry.path, mid: geometry.mid }];
+    return [
+      {
+        connection,
+        from: fromCenter,
+        to: toCenter,
+        path: geometry.path,
+        mid: geometry.mid,
+        pulsing,
+        motes: tendrilMotes(fromCenter, geometry.control, toCenter, connection.id, tendrilPhase.value, pulsing),
+      },
+    ];
   }),
+);
+
+// Only spin the animation clock while there is something alive to animate.
+watch(
+  () => connections.value.length > 0 || Boolean(connectDragState.value),
+  (alive) => {
+    if (alive && !tendrilRaf) {
+      tendrilRaf = requestAnimationFrame(animateTendrils);
+    } else if (!alive && tendrilRaf) {
+      cancelAnimationFrame(tendrilRaf);
+      tendrilRaf = 0;
+    }
+  },
+  { immediate: true },
 );
 
 const selectedTopLevelArtifact = computed(() => {
@@ -429,7 +490,7 @@ const liveTendrilPath = computed(() => {
   if (!state) return null;
   const from = findLiveArtifact(state.fromId);
   if (!from) return null;
-  return tendrilGeometry(artifactCenter(from), state.toWorld, state.fromId).path;
+  return tendrilGeometry(artifactCenter(from), state.toWorld, state.fromId, tendrilPhase.value).path;
 });
 
 function artifactContentSnippet(artifact: Artifact) {
@@ -588,8 +649,43 @@ function scheduleSuggestions(artifactId: string) {
   }, 450);
 }
 
+// When the AI is unreachable (offline, rate-limited), the canvas still beckons.
+function fallbackSuggestions(artifact: Artifact): ArtifactSuggestion[] {
+  const seed = artifact.prompt || artifact.title;
+
+  const byKind: Record<string, ArtifactSuggestion[]> = {
+    image: [
+      { kind: 'text', title: 'Give it words', prompt: `write a short, evocative text about: ${seed}`, reason: 'words for what the image only shows' },
+      { kind: 'image', title: 'Another angle', prompt: `${seed}, seen from a completely different perspective`, reason: 'sees the same thing differently' },
+      { kind: 'component', title: 'Bring it alive', prompt: `a small playful interactive component inspired by: ${seed}`, reason: 'lets you touch it' },
+    ],
+    text: [
+      { kind: 'image', title: 'Paint it', prompt: `an image capturing the essence of: ${seed}`, reason: 'shows what the words mean' },
+      { kind: 'text', title: 'What follows', prompt: `continue the thought of: ${seed}`, reason: 'the next chapter' },
+      { kind: 'component', title: 'Make it usable', prompt: `an interactive component that presents this text beautifully: ${seed}`, reason: 'gives the words a home' },
+    ],
+    component: [
+      { kind: 'text', title: 'Its story', prompt: `write a short story or description around: ${seed}`, reason: 'why this exists' },
+      { kind: 'component', title: 'A companion', prompt: `a companion component that complements: ${seed}`, reason: 'they work together' },
+      { kind: 'image', title: 'Its mood', prompt: `an atmospheric image setting the mood for: ${seed}`, reason: 'how it should feel' },
+    ],
+    video: [
+      { kind: 'image', title: 'A still frame', prompt: `a single beautiful frame from: ${seed}`, reason: 'one caught moment' },
+      { kind: 'text', title: 'The narration', prompt: `write narration for: ${seed}`, reason: 'a voice for the motion' },
+      { kind: 'object', title: 'The scenes', prompt: `a structured scene list for: ${seed}`, reason: 'its skeleton' },
+    ],
+    object: [
+      { kind: 'image', title: 'Picture it', prompt: `an image visualising: ${seed}`, reason: 'make it visible' },
+      { kind: 'component', title: 'Make it living', prompt: `an interactive component to explore: ${seed}`, reason: 'walk around inside it' },
+      { kind: 'text', title: 'Explain it', prompt: `explain warmly and clearly: ${seed}`, reason: 'its meaning in words' },
+    ],
+  };
+
+  return byKind[artifact.kind] ?? byKind.object;
+}
+
 async function loadSuggestions(artifactId: string) {
-  if (suggestionCache.value[artifactId]) return;
+  if (suggestionCache.value[artifactId]?.length) return;
 
   const artifact = findLiveArtifact(artifactId);
   if (!artifact || artifact.parentId) return;
@@ -610,9 +706,15 @@ async function loadSuggestions(artifactId: string) {
     });
 
     if (token !== suggestionRequestToken) return;
-    if (suggestions.length) suggestionCache.value = { ...suggestionCache.value, [artifactId]: suggestions };
+    suggestionCache.value = {
+      ...suggestionCache.value,
+      [artifactId]: suggestions.length ? suggestions : fallbackSuggestions(artifact),
+    };
   } catch (error) {
-    console.warn('Suggestion request failed.', error);
+    console.warn('Suggestion request failed, sprouting local seeds.', error);
+    if (token === suggestionRequestToken) {
+      suggestionCache.value = { ...suggestionCache.value, [artifactId]: fallbackSuggestions(artifact) };
+    }
   } finally {
     if (suggestionsLoadingId.value === artifactId) suggestionsLoadingId.value = null;
   }
@@ -651,9 +753,15 @@ async function createFromSuggestion(suggestion: ArtifactSuggestion, index: numbe
       y: position.y - 60,
     });
 
-    // Consume the used suggestion; the rest stay available on the source bubble.
+    // Consume the used suggestion; when the last one is taken, the cache entry
+    // dissolves so fresh suggestions sprout the next time this bubble is selected.
     const remaining = (suggestionCache.value[source.id] ?? []).filter((item) => item !== suggestion);
-    suggestionCache.value = { ...suggestionCache.value, [source.id]: remaining };
+    if (remaining.length) {
+      suggestionCache.value = { ...suggestionCache.value, [source.id]: remaining };
+    } else {
+      const { [source.id]: _consumed, ...rest } = suggestionCache.value;
+      suggestionCache.value = rest;
+    }
 
     // A hatched ghost arrives already woven to its source.
     if (created[0]) {
@@ -1298,6 +1406,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
   if (suggestionTimer) window.clearTimeout(suggestionTimer);
+  if (tendrilRaf) cancelAnimationFrame(tendrilRaf);
   deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
   forkAnimationTimers.forEach((timerId) => window.clearTimeout(timerId));
 });
@@ -1335,16 +1444,38 @@ onUnmounted(() => {
             <stop offset="1" stop-color="rgba(142, 255, 135, 0.6)" />
           </linearGradient>
         </defs>
-        <path
-          v-for="edge in renderedConnections"
-          :key="edge.connection.id"
-          class="tendril"
-          :class="{ 'tendril--pulsing': pulsingConnectionIds.includes(edge.connection.id) }"
-          :d="edge.path"
-          :stroke="`url(#tendril-grad-${edge.connection.id})`"
-        />
-        <path v-if="liveTendrilPath" class="tendril tendril--live" :d="liveTendrilPath" />
+        <g v-for="edge in renderedConnections" :key="edge.connection.id" class="tendril" :class="{ 'tendril--pulsing': edge.pulsing }">
+          <path class="tendril__glow" :d="edge.path" :stroke="`url(#tendril-grad-${edge.connection.id})`" />
+          <path class="tendril__core" :d="edge.path" :stroke="`url(#tendril-grad-${edge.connection.id})`" />
+          <circle
+            v-for="mote in edge.motes"
+            :key="mote.key"
+            class="tendril__mote"
+            :cx="mote.x"
+            :cy="mote.y"
+            :r="mote.r"
+            :opacity="mote.opacity"
+          />
+        </g>
+        <path v-if="liveTendrilPath" class="tendril__live" :d="liveTendrilPath" />
       </svg>
+
+      <div
+        v-if="selectedTopLevelArtifact && !isGenerating && !regeneratingArtifactId"
+        class="weave-halo"
+        :class="{ 'weave-halo--weaving': Boolean(connectDragState) }"
+        :style="{
+          left: `${selectedTopLevelArtifact.x - 46}px`,
+          top: `${selectedTopLevelArtifact.y - 46}px`,
+          width: `${artifactVisualSize(selectedTopLevelArtifact).w + 92}px`,
+          height: `${artifactVisualSize(selectedTopLevelArtifact).h + 92}px`,
+          borderRadius: selectedArtifactId === selectedTopLevelArtifact.id ? '84px' : '999px',
+        }"
+        aria-label="Drag from this glow to weave the bubble to another"
+        @pointerdown="handleAuraPointerDown($event, selectedTopLevelArtifact)"
+        @pointermove="handleAuraPointerMove"
+        @pointerup="handleAuraPointerUp"
+      />
 
       <button
         v-for="marker in deletedMarkers"
@@ -1550,32 +1681,22 @@ onUnmounted(() => {
           @pointerup.stop
           @click.stop="breatheArtifact(artifact)"
         >
-          breathe
+          <span>breathe</span>
         </button>
       </template>
 
-      <svg
-        v-if="selectedTopLevelArtifact && !isGenerating && !regeneratingArtifactId"
-        class="connect-aura"
-        :style="{
-          left: `${selectedTopLevelArtifact.x - 22}px`,
-          top: `${selectedTopLevelArtifact.y - 22}px`,
-        }"
-        :width="artifactVisualSize(selectedTopLevelArtifact).w + 44"
-        :height="artifactVisualSize(selectedTopLevelArtifact).h + 44"
-        aria-label="Drag from this ring to connect the bubble to another"
-      >
-        <rect
-          x="22"
-          y="22"
-          :width="artifactVisualSize(selectedTopLevelArtifact).w"
-          :height="artifactVisualSize(selectedTopLevelArtifact).h"
-          :rx="Math.min(64, artifactVisualSize(selectedTopLevelArtifact).h / 2)"
-          @pointerdown="handleAuraPointerDown($event, selectedTopLevelArtifact)"
-          @pointermove="handleAuraPointerMove"
-          @pointerup="handleAuraPointerUp"
+      <template v-if="selectedTopLevelArtifact && suggestionsLoadingId === selectedTopLevelArtifact.id && !activeSuggestions.length">
+        <span
+          v-for="seedIndex in 3"
+          :key="`seed-${seedIndex}`"
+          class="ghost-seed"
+          :style="{
+            left: `${ghostSuggestionPosition(selectedTopLevelArtifact, seedIndex - 1, 3).x}px`,
+            top: `${ghostSuggestionPosition(selectedTopLevelArtifact, seedIndex - 1, 3).y}px`,
+            '--ghost-delay': `${(seedIndex - 1) * 240}ms`,
+          }"
         />
-      </svg>
+      </template>
 
       <button
         v-for="(suggestion, index) in activeSuggestions"

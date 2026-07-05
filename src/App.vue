@@ -981,12 +981,14 @@ onUnmounted(() => {
           'artifact-card--has-children': getChildArtifacts(artifact.id).length,
           'artifact-card--splitting': splittingArtifactIds.includes(artifact.id),
           'artifact-card--fork-born': forkBornArtifactIds.includes(artifact.id),
+          'artifact-card--image-orb': artifact.kind === 'image' && Boolean(artifact.content.imageUrl),
         }"
         :style="{
           left: `${artifact.x}px`,
           top: `${artifact.y}px`,
           width: `${artifact.width}px`,
           minHeight: `${getArtifactRenderHeight(artifact)}px`,
+          '--bubble-growth': getChildArtifacts(artifact.id).length,
         }"
         tabindex="0"
         aria-label="Generated artifact. Drag to move."

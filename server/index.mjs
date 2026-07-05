@@ -410,7 +410,7 @@ async function callOpenRouterImage(prompt) {
     throw error;
   }
 
-  const model = process.env.OPENROUTER_IMAGE_MODEL || 'google/gemini-2.5-flash-image';
+  const model = process.env.OPENROUTER_IMAGE_MODEL || 'google/gemini-3.1-flash-image';
 
   logGeneration('image_attempt', { model, promptLength: prompt.length });
 

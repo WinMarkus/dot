@@ -8,3 +8,66 @@
 .seed-dot--dragging {
   transition: none;
 }
+
+/* Little moons that circle a working indicator — planets and electrons alike.
+   Hidden by default; each activation context switches them on. */
+.orbit-moon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: none;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 999px;
+  background: rgb(var(--c-spark));
+  box-shadow: 0 0 9px rgba(var(--c-warm), 0.9);
+  pointer-events: none;
+}
+
+.orbit-moon--1 {
+  --orbit-radius: 26px;
+  animation-duration: 1.5s;
+}
+
+.orbit-moon--2 {
+  --orbit-radius: 34px;
+  width: 3.5px;
+  height: 3.5px;
+  margin: -1.75px 0 0 -1.75px;
+  animation-duration: 2.4s;
+  animation-direction: reverse;
+  opacity: 0.85;
+}
+
+.orbit-moon--3 {
+  --orbit-radius: 19px;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  animation-duration: 1.05s;
+  opacity: 0.7;
+}
+
+.seed-dot--generating .orbit-moon {
+  display: block;
+  animation-name: moon-orbit;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes moon-orbit {
+  from {
+    transform: rotate(0deg) translateX(var(--orbit-radius, 26px));
+  }
+
+  to {
+    transform: rotate(360deg) translateX(var(--orbit-radius, 26px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit-moon {
+    display: none !important;
+  }
+}

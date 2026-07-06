@@ -379,7 +379,7 @@ async function requestGeneratedArtifacts(
   } catch (error) {
     console.warn('AI generation failed. Falling back to local generator.', error);
     generationStatus.value = 'dreaming offline';
-    return [fakeGenerateArtifact(effectivePrompt, selectedArtifact)];
+    return [fakeGenerateArtifact(effectivePrompt, selectedArtifact, preferredKind)];
   }
 }
 
@@ -657,7 +657,13 @@ let suggestionRequestToken = 0;
 
 const activeSuggestionArtifact = computed(() => {
   const id = selectedArtifactId.value;
-  if (!id || isGenerating.value || regeneratingArtifactId.value) return null;
+  if (!id) return null;
+
+  // While one of this bubble's ghosts is hatching, keep the ghosts visible so
+  // the hatching one can show its orbit; any other generation hides them.
+  const hatchingHere = creatingSuggestionKey.value?.startsWith(`${id}:`) ?? false;
+  if ((isGenerating.value || regeneratingArtifactId.value) && !hatchingHere) return null;
+
   const artifact = findLiveArtifact(id);
   if (!artifact || artifact.parentId || deletingArtifactIds.value.includes(id)) return null;
   return artifact;
@@ -1729,7 +1735,10 @@ onUnmounted(() => {
         v-for="(suggestion, index) in activeSuggestions"
         :key="`${activeSuggestionArtifact?.id}-${suggestion.title}`"
         class="ghost-suggestion"
-        :class="{ 'ghost-suggestion--creating': creatingSuggestionKey === `${activeSuggestionArtifact?.id}:${index}` }"
+        :class="{
+          'ghost-suggestion--creating': creatingSuggestionKey === `${activeSuggestionArtifact?.id}:${index}`,
+          'ghost-suggestion--waiting': creatingSuggestionKey && creatingSuggestionKey !== `${activeSuggestionArtifact?.id}:${index}`,
+        }"
         type="button"
         :title="suggestion.reason"
         :aria-label="`Create suggested artifact: ${suggestion.title}`"
@@ -1746,6 +1755,9 @@ onUnmounted(() => {
       >
         <span>{{ suggestion.title }}</span>
         <small>{{ suggestion.kind }}</small>
+        <i class="orbit-moon orbit-moon--1" aria-hidden="true" />
+        <i class="orbit-moon orbit-moon--2" aria-hidden="true" />
+        <i class="orbit-moon orbit-moon--3" aria-hidden="true" />
       </button>
 
       <button
@@ -1759,6 +1771,9 @@ onUnmounted(() => {
         @pointerup="handleDotPointerUp"
       >
         <span class="seed-dot__core" />
+        <i class="orbit-moon orbit-moon--1" aria-hidden="true" />
+        <i class="orbit-moon orbit-moon--2" aria-hidden="true" />
+        <i class="orbit-moon orbit-moon--3" aria-hidden="true" />
       </button>
     </div>
 
@@ -1916,7 +1931,11 @@ onUnmounted(() => {
       <pre>{{ inspectedArtifactRaw }}</pre>
     </aside>
 
-    <form class="command-bar" :class="{ 'command-bar--visible': isDotActive || isGenerating }" @submit.prevent="submitPrompt">
+    <form
+      class="command-bar"
+      :class="{ 'command-bar--visible': isDotActive || (isGenerating && !creatingSuggestionKey) }"
+      @submit.prevent="submitPrompt"
+    >
       <div class="command-bar__status">
         <span class="command-bar__dot" />
         <span>{{ isGenerating ? 'shaping...' : promptMode.type === 'edit' ? 'artifact is listening' : 'origin is listening' }}</span>

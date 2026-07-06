@@ -72,6 +72,35 @@
   animation: ghost-suggestion-hatch 900ms ease-in-out infinite;
 }
 
+/* While hatching, moons orbit the ghost on wider paths than the seed dot's. */
+.ghost-suggestion--creating .orbit-moon {
+  display: block;
+  animation-name: moon-orbit;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.ghost-suggestion--creating .orbit-moon--1 {
+  --orbit-radius: 62px;
+  animation-duration: 2.1s;
+}
+
+.ghost-suggestion--creating .orbit-moon--2 {
+  --orbit-radius: 74px;
+  animation-duration: 3.2s;
+}
+
+.ghost-suggestion--creating .orbit-moon--3 {
+  --orbit-radius: 52px;
+  animation-duration: 1.4s;
+}
+
+/* Sibling ghosts hold their breath while one hatches. */
+.ghost-suggestion--waiting {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
 @keyframes ghost-suggestion-appear {
   from {
     opacity: 0;

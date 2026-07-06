@@ -121,8 +121,8 @@ p, h3 { margin: 0; }
   };
 }
 
-export function fakeGenerateArtifact(value: string, previous?: Artifact): GeneratedArtifact {
-  const kind = detectArtifactKind(value, previous?.kind ?? 'unknown');
+export function fakeGenerateArtifact(value: string, previous?: Artifact, preferredKind?: ArtifactKind): GeneratedArtifact {
+  const kind = detectArtifactKind(value, preferredKind ?? previous?.kind ?? 'unknown');
   const title = previous ? makeArtifactTitle(`${previous.title} · ${value}`) : makeArtifactTitle(value);
 
   if (kind === 'text') {

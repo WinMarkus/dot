@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import App from './App.vue';
+import { installCanvasPersistence } from './canvas-persistence';
 import { installInspectorOriginTracking } from './inspector-origin';
 import './themes.css';
 import './styles.css';
@@ -18,7 +19,10 @@ import './nested-bubbles.css';
 import './model-picker.css';
 import './ghost-suggestions.css';
 import './connections.css';
+import './canvas-persistence.css';
 import './artifact-open-guard';
 
 installInspectorOriginTracking();
-createApp(App).mount('#app');
+const app = createApp(App);
+const root = app.mount('#app');
+installCanvasPersistence(root);

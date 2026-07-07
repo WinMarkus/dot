@@ -5,7 +5,6 @@ const EXPAND_CLASS = 'component-expand-button';
 let lightbox: HTMLElement | null = null;
 let frame: HTMLIFrameElement | null = null;
 let titleEl: HTMLElement | null = null;
-let observer: MutationObserver | null = null;
 
 function ensureLightbox() {
   if (lightbox && frame && titleEl) return { lightbox, frame, titleEl };
@@ -98,8 +97,7 @@ function installExpandButtons() {
 export function installComponentLightbox() {
   installExpandButtons();
 
-  observer = new MutationObserver(() => installExpandButtons());
-  observer.observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(() => installExpandButtons()).observe(document.body, { childList: true, subtree: true });
 
   document.addEventListener(
     'pointerdown',

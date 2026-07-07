@@ -1,0 +1,272 @@
+@media (max-width: 760px), (pointer: coarse) {
+  html,
+  body,
+  #app {
+    overscroll-behavior: none;
+  }
+
+  .workspace {
+    touch-action: none;
+  }
+
+  .mobile-canvas-gesture-active,
+  .mobile-canvas-gesture-active * {
+    cursor: grabbing !important;
+  }
+
+  /* Controls: keep system controls away from the prompt and away from each other. */
+  .model-dock {
+    top: max(10px, env(safe-area-inset-top));
+    right: 10px;
+    bottom: auto;
+    z-index: 88;
+    max-width: calc(58vw - 8px);
+  }
+
+  .model-dock .generation-status {
+    max-width: 100%;
+    overflow: hidden;
+    padding: 8px 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .model-picker {
+    right: 0;
+    left: auto;
+    max-width: calc(100vw - 20px);
+    max-height: min(58vh, 420px);
+    overflow: auto;
+  }
+
+  .github-save-dock {
+    top: max(10px, env(safe-area-inset-top));
+    right: auto;
+    bottom: auto;
+    left: 10px;
+    z-index: 87;
+    max-width: calc(42vw - 12px);
+    padding: 6px;
+    gap: 5px;
+    border-radius: 18px;
+  }
+
+  .github-save-dock__button {
+    padding: 7px 8px;
+    font-size: 0.68rem;
+  }
+
+  .github-save-dock__status {
+    display: none;
+  }
+
+  .theme-dots {
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 78px);
+    left: 14px;
+    z-index: 82;
+    gap: 12px;
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(var(--c-deep), 0.42);
+    backdrop-filter: blur(12px);
+  }
+
+  .theme-dot {
+    width: 21px;
+    height: 21px;
+  }
+
+  .canvas-help {
+    top: calc(max(10px, env(safe-area-inset-top)) + 48px);
+    right: 10px;
+    bottom: auto;
+    left: auto;
+    z-index: 82;
+  }
+
+  .canvas-help__trigger {
+    width: 32px;
+    height: 32px;
+  }
+
+  .canvas-help__panel {
+    right: 0;
+    left: auto;
+    top: 40px;
+    bottom: auto;
+  }
+
+  .marker-control {
+    right: 12px;
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 78px);
+    z-index: 82;
+  }
+
+  /* Prompt: one clear mobile command surface, never permanently pinned to the top. */
+  .command-bar,
+  .command-bar--visible:focus-within {
+    top: auto !important;
+    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: calc(100vw - 18px);
+    max-width: 620px;
+    padding: 9px;
+    border-radius: 22px;
+    z-index: 92;
+  }
+
+  .command-bar input {
+    min-height: 38px;
+    padding: 0 8px;
+    font-size: 1rem;
+  }
+
+  .command-bar button {
+    min-width: 74px;
+    min-height: 38px;
+    padding: 9px 12px;
+    font-size: 0.9rem;
+  }
+
+  /* Bubbles: selected bubbles must be readable; closed bubbles can stay compact. */
+  .artifact-card {
+    transform: scale(0.92);
+  }
+
+  .artifact-card--dragging {
+    transform: scale(0.94);
+  }
+
+  .artifact-card:not(.artifact-card--selected) {
+    --closed-bubble-size: calc(132px + min(var(--bubble-growth, 0), 5) * 8px);
+  }
+
+  .artifact-card:not(.artifact-card--selected) h2 {
+    max-width: 96px;
+    font-size: 0.92rem;
+    line-height: 1.06;
+  }
+
+  .artifact-card--selected {
+    width: min(360px, calc(100vw - 28px)) !important;
+    min-height: 260px !important;
+    padding: 20px;
+    border-radius: 34px !important;
+    transform: none !important;
+  }
+
+  .artifact-card--selected h2 {
+    margin-bottom: 14px;
+    font-size: 1.18rem;
+    line-height: 1.12;
+  }
+
+  .artifact-card--selected .artifact-content {
+    color: rgba(var(--c-ink), 0.78);
+    font-size: 0.98rem;
+    line-height: 1.48;
+  }
+
+  .artifact-card--selected .object-preview {
+    padding: 13px;
+    border-radius: 24px;
+  }
+
+  .artifact-card--selected .object-preview__header strong {
+    font-size: 0.92rem;
+    line-height: 1.25;
+  }
+
+  .artifact-card--selected .object-preview__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .image-preview,
+  .video-preview {
+    min-height: 142px;
+    border-radius: 26px;
+  }
+
+  .image-result img,
+  .component-frame {
+    max-height: 46vh;
+  }
+
+  .component-frame {
+    min-height: 260px;
+    border-radius: 24px;
+  }
+
+  /* Action constellation: bring it closer to the selected object on small screens. */
+  .artifact-action-system {
+    top: -70px !important;
+    right: -22px !important;
+    width: 178px !important;
+    height: 154px !important;
+  }
+
+  .artifact-action-root {
+    top: 52px !important;
+    right: 72px !important;
+  }
+
+  .artifact-action--inspect {
+    top: 6px !important;
+    right: 70px !important;
+  }
+
+  .artifact-action--edit {
+    top: 40px !important;
+    right: 122px !important;
+  }
+
+  .artifact-action--fork {
+    top: 96px !important;
+    right: 112px !important;
+  }
+
+  .artifact-action--delete {
+    top: 112px !important;
+    right: 42px !important;
+  }
+
+  .inspector-panel {
+    right: 10px;
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 72px);
+    left: 10px !important;
+    top: auto !important;
+    width: auto;
+    max-height: min(62vh, 520px);
+    overflow: auto;
+    border-radius: 28px 28px 20px 20px;
+  }
+
+  .inspector-panel pre {
+    max-height: 190px;
+    overflow: auto;
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .github-save-dock {
+    max-width: 46vw;
+  }
+
+  .github-save-dock__button[data-action='load'] {
+    display: none;
+  }
+
+  .model-dock {
+    max-width: 50vw;
+  }
+
+  .theme-dots {
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 70px);
+  }
+
+  .artifact-card--selected {
+    width: calc(100vw - 20px) !important;
+  }
+}

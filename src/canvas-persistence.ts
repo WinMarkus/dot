@@ -1,3 +1,4 @@
+import { installMobileCanvasGestures } from './mobile-canvas-gestures';
 import type { Artifact, ArtifactConnection, CameraState, DeletedMarker, Point } from './types';
 
 type DotSnapshot = {
@@ -180,6 +181,8 @@ function createDock() {
 }
 
 export function installCanvasPersistence(rootInstance: unknown) {
+  installMobileCanvasGestures(rootInstance);
+
   const setupState = getSetupState(rootInstance);
   if (!setupState) {
     console.warn('[dot:canvas] setup state unavailable; canvas persistence dock disabled');

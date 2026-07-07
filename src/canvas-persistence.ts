@@ -1,3 +1,5 @@
+import { installComponentLightbox } from './component-lightbox';
+import { installConnectionTools } from './connection-tools';
 import { installMobileCanvasGestures } from './mobile-canvas-gestures';
 import type { Artifact, ArtifactConnection, CameraState, DeletedMarker, Point } from './types';
 
@@ -182,6 +184,8 @@ function createDock() {
 
 export function installCanvasPersistence(rootInstance: unknown) {
   installMobileCanvasGestures(rootInstance);
+  installComponentLightbox();
+  installConnectionTools(rootInstance);
 
   const setupState = getSetupState(rootInstance);
   if (!setupState) {

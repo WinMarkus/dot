@@ -186,6 +186,7 @@ export function installCanvasPersistence(rootInstance: unknown) {
     return;
   }
 
+  const state: DotSetupState = setupState;
   const dock = createDock();
 
   async function loadFromGitHub(manual: boolean) {
@@ -199,7 +200,7 @@ export function installCanvasPersistence(rootInstance: unknown) {
         return;
       }
 
-      const currentArtifacts = arrayValue<Artifact>(setupState.artifacts);
+      const currentArtifacts = arrayValue<Artifact>(state.artifacts);
       if (manual && currentArtifacts.length && !confirm('Load saved GitHub canvas and replace the current canvas?')) {
         setStatus(dock, 'load cancelled', 'idle');
         return;
@@ -210,7 +211,7 @@ export function installCanvasPersistence(rootInstance: unknown) {
         return;
       }
 
-      applySnapshot(setupState, snapshot);
+      applySnapshot(state, snapshot);
       setStatus(dock, `loaded ${snapshot.artifacts.length}`, 'good');
     } catch (error) {
       console.warn('[dot:canvas] load failed', error);
@@ -220,7 +221,7 @@ export function installCanvasPersistence(rootInstance: unknown) {
 
   async function saveToGitHub() {
     try {
-      const snapshot = buildSnapshot(setupState);
+      const snapshot = buildSnapshot(state);
       setStatus(dock, 'saving…', 'busy');
 
       try {

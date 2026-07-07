@@ -1,3 +1,6 @@
+@import './component-lightbox.css';
+@import './connection-tools.css';
+
 @media (max-width: 760px), (pointer: coarse) {
   html,
   body,

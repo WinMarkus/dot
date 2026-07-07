@@ -1,8 +1,8 @@
 .workspace {
   isolation: isolate;
   background:
-    radial-gradient(circle at 50% 55%, rgba(var(--c-glow), 0.045), transparent 24rem),
-    radial-gradient(circle at 18% 18%, rgba(var(--c-life-soft), 0.055), transparent 20rem),
+    radial-gradient(circle at 50% 55%, rgba(var(--c-glow), 0.04), transparent 24rem),
+    radial-gradient(circle at 18% 18%, rgba(var(--c-life-soft), 0.048), transparent 20rem),
     linear-gradient(145deg, rgb(var(--bg-a)) 0%, rgb(var(--bg-b)) 50%, rgb(var(--bg-c)) 100%);
 }
 
@@ -19,8 +19,6 @@
   opacity: var(--surface-opacity, 1);
   mix-blend-mode: var(--surface-blend, normal);
   background: var(--surface-pattern);
-  background-size: var(--surface-size, auto);
-  background-position: var(--surface-position, center);
 }
 
 .workspace::after {
@@ -42,50 +40,47 @@
 
 :root,
 :root[data-theme='nature'] {
-  --surface-opacity: 0.7;
+  --surface-opacity: 1;
   --surface-blend: screen;
-  --surface-size: 520px 520px, 180px 180px, auto;
-  --surface-position: center;
   --surface-vignette: 0.34;
   --surface-pattern:
-    radial-gradient(ellipse at 22% 28%, rgba(142, 255, 135, 0.06), transparent 46%),
-    radial-gradient(circle, rgba(222, 255, 207, 0.055) 0 1px, transparent 1.4px),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.014), transparent 52%);
+    radial-gradient(ellipse at 18% 24%, rgba(142, 255, 135, 0.105), transparent 32%),
+    radial-gradient(ellipse at 82% 78%, rgba(255, 188, 117, 0.06), transparent 34%),
+    radial-gradient(ellipse at 42% 90%, rgba(92, 132, 78, 0.08), transparent 42%),
+    linear-gradient(128deg, rgba(255, 255, 220, 0.018), transparent 46%, rgba(142, 255, 135, 0.026));
   --surface-atmosphere:
-    radial-gradient(circle at 26% 72%, rgba(142, 255, 135, 0.04), transparent 28rem),
-    radial-gradient(circle at 76% 22%, rgba(255, 188, 117, 0.032), transparent 24rem);
+    radial-gradient(circle at 26% 72%, rgba(142, 255, 135, 0.032), transparent 28rem),
+    radial-gradient(circle at 76% 22%, rgba(255, 188, 117, 0.025), transparent 24rem);
 }
 
 :root[data-theme='technical'] {
-  --surface-opacity: 0.78;
+  --surface-opacity: 1;
   --surface-blend: screen;
-  --surface-size: 160px 160px, 640px 640px, 320px 320px, auto;
-  --surface-position: center;
-  --surface-vignette: 0.38;
+  --surface-vignette: 0.4;
   --surface-pattern:
-    radial-gradient(circle, rgba(205, 236, 255, 0.13) 0 1px, transparent 1.4px),
-    linear-gradient(rgba(205, 236, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(205, 236, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, transparent 0 49.9%, rgba(96, 216, 255, 0.05) 49.9% 50.1%, transparent 50.1%),
+    linear-gradient(0deg, transparent 0 49.9%, rgba(96, 216, 255, 0.04) 49.9% 50.1%, transparent 50.1%),
+    radial-gradient(ellipse at 18% 22%, rgba(96, 216, 255, 0.095), transparent 30%),
+    radial-gradient(ellipse at 80% 78%, rgba(194, 233, 255, 0.042), transparent 36%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.014), transparent 48%);
   --surface-atmosphere:
-    linear-gradient(90deg, transparent 0 49.9%, rgba(96, 216, 255, 0.055) 49.9% 50.1%, transparent 50.1%),
-    linear-gradient(0deg, transparent 0 49.9%, rgba(96, 216, 255, 0.045) 49.9% 50.1%, transparent 50.1%);
+    radial-gradient(circle at 50% 50%, transparent 0 20%, rgba(96, 216, 255, 0.022) 20.2% 20.35%, transparent 20.55% 38%, rgba(96, 216, 255, 0.016) 38.2% 38.35%, transparent 38.55%);
 }
 
 :root[data-theme='space'] {
-  --surface-opacity: 0.82;
+  --surface-opacity: 1;
   --surface-blend: screen;
-  --surface-size: 320px 320px, 760px 760px, 1000px 1000px, auto;
-  --surface-position: center, 58% 42%, 44% 52%, center;
-  --surface-vignette: 0.52;
+  --surface-vignette: 0.54;
   --surface-pattern:
-    radial-gradient(circle at 12% 18%, rgba(242, 238, 255, 0.46) 0 1px, transparent 1.4px),
-    radial-gradient(circle at 72% 26%, rgba(168, 148, 255, 0.06), transparent 30rem),
-    radial-gradient(circle at 50% 50%, transparent 0 18%, rgba(168, 148, 255, 0.035) 18.2% 18.32%, transparent 18.55% 31%, rgba(168, 148, 255, 0.028) 31.2% 31.32%, transparent 31.55%),
+    radial-gradient(circle at 18% 20%, rgba(242, 238, 255, 0.26) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 66% 34%, rgba(242, 238, 255, 0.18) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 82% 68%, rgba(242, 238, 255, 0.18) 0 1px, transparent 1.4px),
+    radial-gradient(ellipse at 72% 26%, rgba(168, 148, 255, 0.08), transparent 30%),
+    radial-gradient(circle at 50% 50%, transparent 0 18%, rgba(168, 148, 255, 0.034) 18.2% 18.32%, transparent 18.55% 31%, rgba(168, 148, 255, 0.026) 31.2% 31.32%, transparent 31.55%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.012), transparent 52%);
   --surface-atmosphere:
-    radial-gradient(circle at 52% 48%, rgba(168, 148, 255, 0.045), transparent 32rem),
-    radial-gradient(circle at 24% 72%, rgba(255, 212, 142, 0.026), transparent 26rem);
+    radial-gradient(circle at 52% 48%, rgba(168, 148, 255, 0.042), transparent 32rem),
+    radial-gradient(circle at 24% 72%, rgba(255, 212, 142, 0.024), transparent 26rem);
 }
 
 :root[data-theme='technical'] .ambient,

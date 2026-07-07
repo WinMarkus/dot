@@ -10,7 +10,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "start": "node server/index.mjs"
+    "start": "node --import ./server/canvas-persistence.mjs server/index.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.0",

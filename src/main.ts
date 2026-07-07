@@ -5,6 +5,7 @@ import { installImageLightbox } from './image-lightbox';
 import { installInspectorOriginTracking } from './inspector-origin';
 import './themes.css';
 import './styles.css';
+import './world-surfaces.css';
 import './delete-markers.css';
 import './mobile-command-bar.css';
 import './mobile-prompt-safe.css';

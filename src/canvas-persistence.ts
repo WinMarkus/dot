@@ -1,3 +1,4 @@
+import { installCanvasWheelZoom } from './canvas-wheel-zoom';
 import { installComponentLightbox } from './component-lightbox';
 import { installConnectionTools } from './connection-tools';
 import { installMobileCanvasGestures } from './mobile-canvas-gestures';
@@ -184,6 +185,7 @@ function createDock() {
 
 export function installCanvasPersistence(rootInstance: unknown) {
   installMobileCanvasGestures(rootInstance);
+  installCanvasWheelZoom(rootInstance);
   installComponentLightbox();
   installConnectionTools(rootInstance);
 

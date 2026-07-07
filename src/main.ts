@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import App from './App.vue';
 import { installCanvasPersistence } from './canvas-persistence';
+import { installImageLightbox } from './image-lightbox';
 import { installInspectorOriginTracking } from './inspector-origin';
 import './themes.css';
 import './styles.css';
@@ -20,9 +21,11 @@ import './model-picker.css';
 import './ghost-suggestions.css';
 import './connections.css';
 import './canvas-persistence.css';
+import './image-lightbox.css';
 import './artifact-open-guard';
 
 installInspectorOriginTracking();
+installImageLightbox();
 const app = createApp(App);
 const root = app.mount('#app');
 installCanvasPersistence(root);

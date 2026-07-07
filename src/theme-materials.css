@@ -1,0 +1,206 @@
+/* Stronger world identities: same interaction grammar, different material language. */
+:root,
+:root[data-theme='nature'] {
+  --artifact-radius-open: 54px;
+  --artifact-radius-closed: 999px;
+  --artifact-border: rgba(222, 255, 207, 0.15);
+  --artifact-bg:
+    radial-gradient(circle at 32% 22%, rgba(255, 255, 235, 0.18), transparent 28%),
+    radial-gradient(circle at 70% 76%, rgba(142, 255, 135, 0.10), transparent 42%),
+    linear-gradient(180deg, rgba(44, 56, 34, 0.84), rgba(17, 21, 15, 0.82));
+  --artifact-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.34),
+    inset 0 1px rgba(255, 255, 230, 0.12),
+    inset 0 -24px 54px rgba(64, 100, 48, 0.12);
+  --closed-orb-glass:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 238, 0.28), transparent 22%),
+    radial-gradient(circle at 50% 56%, rgba(142, 255, 135, 0.11), transparent 55%),
+    radial-gradient(circle at 50% 50%, transparent 48%, rgba(7, 12, 8, 0.42) 100%);
+}
+
+:root[data-theme='technical'] {
+  --artifact-radius-open: 24px;
+  --artifact-radius-closed: 26px;
+  --artifact-border: rgba(194, 233, 255, 0.18);
+  --artifact-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)),
+    linear-gradient(90deg, rgba(96, 216, 255, 0.09), transparent 34%),
+    rgba(13, 17, 21, 0.88);
+  --artifact-shadow:
+    0 28px 76px rgba(0, 0, 0, 0.38),
+    inset 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(96, 216, 255, 0.06);
+  --closed-orb-glass:
+    linear-gradient(135deg, rgba(96, 216, 255, 0.12), transparent 38%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(rgba(255, 255, 255, 0.038) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, transparent 46%, rgba(0, 0, 0, 0.34) 100%);
+}
+
+:root[data-theme='space'] {
+  --artifact-radius-open: 64px;
+  --artifact-radius-closed: 999px;
+  --artifact-border: rgba(214, 202, 255, 0.17);
+  --artifact-bg:
+    radial-gradient(circle at 32% 22%, rgba(242, 238, 255, 0.17), transparent 24%),
+    radial-gradient(circle at 66% 72%, rgba(168, 148, 255, 0.14), transparent 46%),
+    linear-gradient(180deg, rgba(25, 22, 52, 0.88), rgba(8, 8, 20, 0.86));
+  --artifact-shadow:
+    0 34px 110px rgba(0, 0, 0, 0.48),
+    0 0 46px rgba(168, 148, 255, 0.08),
+    inset 0 1px rgba(255, 255, 255, 0.1);
+  --closed-orb-glass:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.26), transparent 20%),
+    radial-gradient(circle at 68% 72%, rgba(168, 148, 255, 0.16), transparent 45%),
+    radial-gradient(circle at 50% 50%, transparent 42%, rgba(2, 3, 15, 0.58) 100%);
+}
+
+/* Override the generic glass card with material surfaces per world. */
+.artifact-card {
+  border-color: var(--artifact-border) !important;
+  border-radius: var(--artifact-radius-open);
+  background: var(--artifact-bg) !important;
+  box-shadow: var(--artifact-shadow) !important;
+}
+
+.artifact-card:not(.artifact-card--selected) {
+  border-radius: var(--artifact-radius-closed) !important;
+}
+
+.artifact-card:not(.artifact-card--selected)::after {
+  inset: 0 !important;
+  background: var(--closed-orb-glass) !important;
+}
+
+:root[data-theme='technical'] .artifact-card:not(.artifact-card--selected) {
+  clip-path: polygon(11% 0, 100% 0, 100% 89%, 89% 100%, 0 100%, 0 11%);
+}
+
+:root[data-theme='technical'] .artifact-card--selected {
+  border-radius: var(--artifact-radius-open) !important;
+  clip-path: none;
+}
+
+:root[data-theme='technical'] .artifact-card::before {
+  background:
+    linear-gradient(90deg, rgba(var(--c-life), 0.38), transparent 18%),
+    linear-gradient(180deg, rgba(var(--c-life), 0.12), transparent 30%) !important;
+}
+
+:root[data-theme='nature'] .artifact-card::before {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(var(--c-warm), 0.28), transparent 24%),
+    radial-gradient(circle at 82% 72%, rgba(var(--c-life), 0.2), transparent 34%) !important;
+}
+
+:root[data-theme='space'] .artifact-card::before {
+  background:
+    radial-gradient(circle at 24% 22%, rgba(var(--c-spark), 0.22), transparent 24%),
+    radial-gradient(circle at 72% 74%, rgba(var(--c-life), 0.22), transparent 40%) !important;
+}
+
+/* Make the canvas surfaces impossible to miss while still tasteful. */
+:root[data-theme='nature'] .workspace::before {
+  opacity: 1;
+  filter: contrast(1.12) saturate(1.08);
+}
+
+:root[data-theme='technical'] .workspace::before {
+  opacity: 1;
+  filter: contrast(1.22);
+}
+
+:root[data-theme='space'] .workspace::before {
+  opacity: 1;
+  filter: contrast(1.15) saturate(1.12);
+}
+
+:root[data-theme='technical'] .artifact-card h2,
+:root[data-theme='technical'] .artifact-card__eyebrow,
+:root[data-theme='technical'] .artifact-content {
+  letter-spacing: 0.01em;
+}
+
+:root[data-theme='technical'] .artifact-card h2 {
+  font-weight: 760;
+}
+
+:root[data-theme='space'] .artifact-card h2 {
+  text-shadow: 0 0 22px rgba(var(--c-life), 0.12);
+}
+
+/* Theme the relationship language without changing SVG geometry. */
+:root[data-theme='nature'] .tendril__glow {
+  stroke-width: 11;
+  opacity: 0.24;
+  filter: blur(6px);
+}
+
+:root[data-theme='nature'] .tendril__core {
+  stroke-width: 2.1;
+  opacity: 0.5;
+}
+
+:root[data-theme='technical'] .tendril__glow {
+  stroke-width: 4;
+  opacity: 0.16;
+  filter: blur(1px);
+}
+
+:root[data-theme='technical'] .tendril__core {
+  stroke-width: 1.25;
+  opacity: 0.74;
+  stroke-dasharray: 7 6;
+}
+
+:root[data-theme='technical'] .tendril__mote {
+  display: none;
+}
+
+:root[data-theme='space'] .tendril__glow {
+  stroke-width: 7;
+  opacity: 0.24;
+  filter: blur(4px);
+}
+
+:root[data-theme='space'] .tendril__core {
+  stroke-width: 1.5;
+  opacity: 0.62;
+  stroke-dasharray: 1 10;
+}
+
+:root[data-theme='space'] .tendril__mote {
+  filter: drop-shadow(0 0 9px rgba(var(--c-life), 0.85));
+}
+
+:root[data-theme='technical'] .tendril-meaning {
+  border: 1px solid rgba(var(--c-life), 0.16);
+  border-radius: 6px;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+:root[data-theme='space'] .tendril-meaning {
+  background: rgba(8, 8, 20, 0.62);
+  box-shadow: 0 0 20px rgba(var(--c-life), 0.08);
+}
+
+/* Reduce the generic glow blobs; the worlds should come from surface language. */
+.ambient {
+  opacity: 0.08 !important;
+}
+
+:root[data-theme='nature'] .ambient--one {
+  background: #6dff8a;
+}
+
+:root[data-theme='technical'] .ambient--one,
+:root[data-theme='technical'] .ambient--two {
+  background: #60d8ff;
+}
+
+:root[data-theme='space'] .ambient--one,
+:root[data-theme='space'] .ambient--two {
+  background: #a894ff;
+}

@@ -4,6 +4,8 @@
     radial-gradient(circle at 50% 55%, rgba(var(--c-glow), 0.04), transparent 24rem),
     radial-gradient(circle at 18% 18%, rgba(var(--c-life-soft), 0.048), transparent 20rem),
     linear-gradient(145deg, rgb(var(--bg-a)) 0%, rgb(var(--bg-b)) 50%, rgb(var(--bg-c)) 100%);
+  background-position: center !important;
+  background-size: auto !important;
 }
 
 .workspace::before,

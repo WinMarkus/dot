@@ -1,9 +1,11 @@
 const LIGHTBOX_CLASS = 'component-lightbox';
 const COMPONENT_SELECTOR = '.component-frame';
+const EXPAND_CLASS = 'component-expand-button';
 
 let lightbox: HTMLElement | null = null;
 let frame: HTMLIFrameElement | null = null;
 let titleEl: HTMLElement | null = null;
+let observer: MutationObserver | null = null;
 
 function ensureLightbox() {
   if (lightbox && frame && titleEl) return { lightbox, frame, titleEl };
@@ -61,30 +63,50 @@ function closeLightbox() {
   }, 180);
 }
 
+function installExpandButtonForFrame(componentFrame: HTMLIFrameElement) {
+  const host = componentFrame.parentElement;
+  if (!host || host.querySelector(`.${EXPAND_CLASS}`)) return;
+
+  if (getComputedStyle(host).position === 'static') {
+    host.style.position = 'relative';
+  }
+
+  const button = document.createElement('button');
+  button.className = EXPAND_CLASS;
+  button.type = 'button';
+  button.textContent = 'expand';
+  button.setAttribute('aria-label', `Enlarge component preview: ${getComponentTitle(componentFrame)}`);
+
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openLightbox(componentFrame);
+  });
+
+  host.appendChild(button);
+}
+
+function installExpandButtons() {
+  document.querySelectorAll<HTMLIFrameElement>(COMPONENT_SELECTOR).forEach(installExpandButtonForFrame);
+}
+
 export function installComponentLightbox() {
+  installExpandButtons();
+
+  observer = new MutationObserver(() => installExpandButtons());
+  observer.observe(document.body, { childList: true, subtree: true });
+
   document.addEventListener(
     'pointerdown',
     (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest(COMPONENT_SELECTOR)) {
-        event.stopPropagation();
-      }
-    },
-    true,
-  );
-
-  document.addEventListener(
-    'click',
-    (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const componentFrame = target.closest<HTMLIFrameElement>(COMPONENT_SELECTOR);
-      if (!componentFrame) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      openLightbox(componentFrame);
+      if (target.closest(`.${EXPAND_CLASS}`)) event.stopPropagation();
     },
     true,
   );

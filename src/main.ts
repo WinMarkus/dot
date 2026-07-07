@@ -21,6 +21,7 @@ import './nested-bubbles.css';
 import './model-picker.css';
 import './ghost-suggestions.css';
 import './connections.css';
+import './theme-materials.css';
 import './canvas-persistence.css';
 import './image-lightbox.css';
 import './artifact-open-guard';

@@ -1,0 +1,31 @@
+.object-preview {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.artifact-card--selected .object-preview {
+  padding-inline: 2px !important;
+  padding-block: 6px !important;
+}
+
+.object-preview__chips span {
+  border-color: rgba(255, 255, 255, 0.055) !important;
+  background: rgba(255, 255, 255, 0.026) !important;
+}
+
+.object-preview__grid {
+  position: relative;
+  margin-top: 2px;
+  padding-top: 4px;
+}
+
+.object-preview__grid::before {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--c-warm), 0.16), transparent);
+  content: "";
+}

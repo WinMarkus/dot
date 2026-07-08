@@ -1,69 +1,226 @@
-.github-save-dock {
+.dot-control-center {
   position: fixed;
-  right: 18px;
-  bottom: 70px;
-  z-index: 80;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  background: rgba(12, 15, 18, 0.66);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(16px);
-  color: rgba(255, 250, 240, 0.72);
-  font-size: 0.72rem;
+  top: 18px;
+  left: 18px;
+  z-index: 96;
+  color: rgba(var(--c-ink), 0.78);
+  font-size: 0.74rem;
   pointer-events: auto;
 }
 
-.github-save-dock__button {
+.dot-control-center__trigger {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  padding: 7px 10px;
-  color: rgba(255, 250, 240, 0.84);
-  background: rgba(255, 255, 255, 0.06);
+  color: rgba(var(--c-ink), 0.76);
+  background: rgba(var(--c-deep), 0.58);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(16px);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.dot-control-center__trigger:hover,
+.dot-control-center--open .dot-control-center__trigger {
+  border-color: rgba(var(--c-warm), 0.36);
+  color: rgba(var(--c-ink), 0.94);
+  background: rgba(var(--c-deep), 0.78);
+}
+
+.dot-control-center__panel {
+  position: absolute;
+  top: 46px;
+  left: 0;
+  display: grid;
+  gap: 12px;
+  width: 242px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  background: rgba(var(--c-deep), 0.78);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(20px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px) scale(0.985);
+  transform-origin: 18px 0;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.dot-control-center--open .dot-control-center__panel,
+.dot-control-center:focus-within .dot-control-center__panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.dot-control-center__section {
+  display: grid;
+  gap: 7px;
+}
+
+.dot-control-center__section small {
+  color: rgba(var(--c-ink), 0.44);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.dot-control-center__row,
+.dot-control-center__themes {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dot-control-center__button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 11px;
+  color: rgba(var(--c-ink), 0.82);
+  background: rgba(255, 255, 255, 0.055);
   cursor: pointer;
   font: inherit;
   white-space: nowrap;
 }
 
-.github-save-dock__button:hover,
-.github-save-dock__button:focus-visible {
-  border-color: rgba(142, 255, 135, 0.38);
-  color: rgba(255, 255, 255, 0.96);
-  background: rgba(142, 255, 135, 0.1);
+.dot-control-center__button:hover,
+.dot-control-center__button:focus-visible {
+  border-color: rgba(var(--c-warm), 0.38);
+  color: rgba(var(--c-ink), 0.96);
+  background: rgba(var(--c-warm), 0.1);
   outline: none;
 }
 
-.github-save-dock__status {
-  max-width: 180px;
+.dot-control-theme {
+  width: 25px;
+  height: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.dot-control-theme:hover,
+.dot-control-theme:focus-visible {
+  border-color: rgba(var(--c-warm), 0.5);
+  outline: none;
+  transform: translateY(-1px) scale(1.08);
+}
+
+.dot-control-theme--nature {
+  background: radial-gradient(circle at 35% 30%, #bfffc2, #4a9d55 54%, #173b22);
+}
+
+.dot-control-theme--technical {
+  background: radial-gradient(circle at 35% 30%, #b7f0ff, #3b8fa5 54%, #17303b);
+}
+
+.dot-control-theme--space {
+  background: radial-gradient(circle at 35% 30%, #e7ddff, #9b7cff 54%, #241b4f);
+}
+
+:root[data-theme='nature'] .dot-control-theme--nature,
+:root[data-theme='technical'] .dot-control-theme--technical,
+:root[data-theme='space'] .dot-control-theme--space {
+  border-color: rgba(var(--c-warm), 0.72);
+  box-shadow:
+    0 0 0 3px rgba(var(--c-warm), 0.1),
+    0 0 22px rgba(var(--c-warm), 0.18);
+}
+
+.dot-control-center__status {
+  max-width: 210px;
   overflow: hidden;
-  padding: 0 7px 0 2px;
+  color: rgba(var(--c-ink), 0.56);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.github-save-dock__status[data-tone='busy'] {
-  color: rgba(255, 188, 117, 0.92);
+.dot-control-center__status[data-tone='busy'] {
+  color: rgba(var(--c-warm), 0.92);
 }
 
-.github-save-dock__status[data-tone='good'] {
+.dot-control-center__status[data-tone='good'] {
   color: rgba(142, 255, 135, 0.92);
 }
 
-.github-save-dock__status[data-tone='bad'] {
+.dot-control-center__status[data-tone='bad'] {
   color: rgba(255, 117, 117, 0.92);
 }
 
+.dot-control-center__help span {
+  color: rgba(var(--c-ink), 0.62);
+  font-size: 0.72rem;
+}
+
+/* The old separate controls stay mounted for their Vue state/actions, but the
+   visible chrome is consolidated into the control center. */
+.theme-dots,
+.canvas-help {
+  display: none !important;
+}
+
+.model-dock {
+  position: fixed !important;
+  top: 18px !important;
+  right: 18px !important;
+  bottom: auto !important;
+  z-index: 95 !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.model-dock:has(.model-picker) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.model-dock .generation-status {
+  display: none;
+}
+
+.model-picker {
+  top: 46px !important;
+  right: 0 !important;
+  bottom: auto !important;
+}
+
 @media (max-width: 760px) {
-  .github-save-dock {
-    right: 10px;
-    bottom: 84px;
-    max-width: calc(100vw - 20px);
+  .dot-control-center {
+    top: max(10px, env(safe-area-inset-top));
+    left: 10px;
   }
 
-  .github-save-dock__status {
-    max-width: 110px;
+  .dot-control-center__panel {
+    width: min(250px, calc(100vw - 20px));
+  }
+
+  .model-dock {
+    top: max(10px, env(safe-area-inset-top)) !important;
+    right: 10px !important;
+    max-width: calc(100vw - 20px) !important;
+  }
+
+  .model-picker {
+    max-width: calc(100vw - 20px) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-control-center__panel,
+  .dot-control-theme {
+    transition: none;
   }
 }

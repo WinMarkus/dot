@@ -110,7 +110,7 @@ function applySnapshot(state: DotSetupState, snapshot: DotSnapshot) {
 }
 
 function setStatus(root: HTMLElement, text: string, tone: 'idle' | 'busy' | 'good' | 'bad' = 'idle') {
-  const status = root.querySelector<HTMLElement>('.github-save-dock__status');
+  const status = root.querySelector<HTMLElement>('.dot-control-center__status, .github-save-dock__status');
   if (!status) return;
 
   status.textContent = text;
@@ -147,7 +147,8 @@ async function persistSnapshot(snapshot: DotSnapshot, token?: string | null) {
   const payload = await readResponseJson(response);
 
   if (!response.ok) {
-    const error = new Error(String(payload?.error || `Canvas save failed with ${response.status}`));
+    const detail = typeof payload?.detail === 'string' ? `: ${payload.detail.slice(0, 220)}` : '';
+    const error = new Error(String(payload?.error || `Canvas save failed with ${response.status}`) + detail);
     (error as Error & { status?: number }).status = response.status;
     throw error;
   }
@@ -173,14 +174,49 @@ function storeSaveToken(token: string) {
 
 function createDock() {
   const dock = document.createElement('div');
-  dock.className = 'github-save-dock';
+  dock.className = 'dot-control-center';
   dock.innerHTML = `
-    <button class="github-save-dock__button" type="button" data-action="save">save github</button>
-    <button class="github-save-dock__button" type="button" data-action="load">load</button>
-    <span class="github-save-dock__status" data-tone="idle">not saved</span>
+    <button class="dot-control-center__trigger" type="button" data-action="toggle-controls" aria-label="Canvas settings" aria-expanded="false">?</button>
+    <div class="dot-control-center__panel" role="dialog" aria-label="Canvas controls">
+      <div class="dot-control-center__section">
+        <small>world</small>
+        <div class="dot-control-center__themes" aria-label="Theme selection">
+          <button class="dot-control-theme dot-control-theme--nature" type="button" data-action="theme" data-theme-name="nature" aria-label="Nature theme"></button>
+          <button class="dot-control-theme dot-control-theme--technical" type="button" data-action="theme" data-theme-name="technical" aria-label="Technical theme"></button>
+          <button class="dot-control-theme dot-control-theme--space" type="button" data-action="theme" data-theme-name="space" aria-label="Space theme"></button>
+        </div>
+      </div>
+      <div class="dot-control-center__section">
+        <small>model</small>
+        <button class="dot-control-center__button" type="button" data-action="model">choose model</button>
+      </div>
+      <div class="dot-control-center__section">
+        <small>snapshot</small>
+        <div class="dot-control-center__row">
+          <button class="dot-control-center__button" type="button" data-action="save">save</button>
+          <button class="dot-control-center__button" type="button" data-action="load">load</button>
+        </div>
+        <span class="dot-control-center__status" data-tone="idle">not saved</span>
+      </div>
+      <div class="dot-control-center__section dot-control-center__help">
+        <small>canvas</small>
+        <span>wheel/pinch zoom</span>
+        <span>drag background pan</span>
+        <span>F fit · 0 reset</span>
+      </div>
+    </div>
   `;
   document.body.appendChild(dock);
   return dock;
+}
+
+function chooseTheme(theme: string) {
+  document.querySelector<HTMLButtonElement>(`.theme-dot--${theme}`)?.click();
+}
+
+function openModelPicker() {
+  const trigger = document.querySelector<HTMLButtonElement>('.generation-status--button');
+  if (trigger?.getAttribute('aria-expanded') !== 'true') trigger?.click();
 }
 
 export function installCanvasPersistence(rootInstance: unknown) {
@@ -230,8 +266,13 @@ export function installCanvasPersistence(rootInstance: unknown) {
 
   async function saveToGitHub() {
     try {
+      if (state.isGenerating || state.regeneratingArtifactId) {
+        setStatus(dock, 'wait for creation', 'busy');
+        return;
+      }
+
       const snapshot = buildSnapshot(state);
-      setStatus(dock, 'saving…', 'busy');
+      setStatus(dock, `saving ${snapshot.artifacts.length}…`, 'busy');
 
       try {
         const payload = await persistSnapshot(snapshot, getStoredSaveToken());
@@ -260,8 +301,17 @@ export function installCanvasPersistence(rootInstance: unknown) {
 
   dock.addEventListener('click', (event) => {
     const target = event.target as HTMLElement | null;
-    const action = target?.closest<HTMLButtonElement>('button')?.dataset.action;
+    const button = target?.closest<HTMLButtonElement>('button');
+    const action = button?.dataset.action;
 
+    if (action === 'toggle-controls') {
+      const isOpen = dock.classList.toggle('dot-control-center--open');
+      button?.setAttribute('aria-expanded', String(isOpen));
+      return;
+    }
+
+    if (action === 'theme') chooseTheme(button?.dataset.themeName ?? 'nature');
+    if (action === 'model') openModelPicker();
     if (action === 'save') void saveToGitHub();
     if (action === 'load') void loadFromGitHub(true);
   });

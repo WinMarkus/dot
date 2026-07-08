@@ -1,5 +1,85 @@
 .image-result img {
-  cursor: zoom-in;
+  cursor: inherit;
+}
+
+.image-open-mote {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: grid;
+  min-width: 38px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: rgba(var(--c-ink), 0.86);
+  background: rgba(var(--c-deep), 0.62);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.28),
+    0 0 22px rgba(var(--c-warm), 0.09);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.84;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease;
+}
+
+.image-open-mote::before {
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, rgba(var(--c-spark), 0.98), rgba(var(--c-warm), 0.72));
+  box-shadow: 0 0 14px rgba(var(--c-warm), 0.45);
+  content: "";
+}
+
+.image-open-mote:hover,
+.image-open-mote:focus-visible {
+  border-color: rgba(var(--c-warm), 0.46);
+  background: rgba(var(--c-deep), 0.84);
+  opacity: 1;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+:root[data-theme='nature'] .image-open-mote::before {
+  border-radius: 62% 38% 58% 42%;
+}
+
+:root[data-theme='technical'] .image-open-mote::before {
+  border-radius: 3px;
+  background: linear-gradient(135deg, rgba(var(--c-spark), 0.95), rgba(var(--c-life), 0.72));
+}
+
+:root[data-theme='space'] .image-open-mote::before {
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.98), rgba(var(--c-life), 0.72));
+}
+
+.artifact-card:not(.artifact-card--selected) .image-open-mote {
+  right: 50%;
+  bottom: 10px;
+  min-width: 32px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 0.54rem;
+  transform: translateX(50%);
+}
+
+.artifact-card:not(.artifact-card--selected) .image-open-mote:hover,
+.artifact-card:not(.artifact-card--selected) .image-open-mote:focus-visible {
+  transform: translateX(50%) translateY(-1px);
 }
 
 .image-lightbox {
@@ -121,6 +201,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .image-open-mote,
   .image-lightbox,
   .image-lightbox__frame {
     transition: none;

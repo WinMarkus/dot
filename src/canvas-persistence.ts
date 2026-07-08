@@ -1,3 +1,4 @@
+import { installArtifactPreviewLightbox } from './artifact-preview-lightbox';
 import { installCanvasWheelZoom } from './canvas-wheel-zoom';
 import { installComponentLightbox } from './component-lightbox';
 import { installConnectionTools } from './connection-tools';
@@ -223,6 +224,7 @@ export function installCanvasPersistence(rootInstance: unknown) {
   installMobileCanvasGestures(rootInstance);
   installCanvasWheelZoom(rootInstance);
   installComponentLightbox();
+  installArtifactPreviewLightbox(rootInstance);
   installConnectionTools(rootInstance);
 
   const setupState = getSetupState(rootInstance);

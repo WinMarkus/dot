@@ -1,5 +1,6 @@
 const LIGHTBOX_CLASS = 'image-lightbox';
 const IMAGE_SELECTOR = '.image-result img';
+const OPEN_CLASS = 'image-open-mote';
 
 let lightbox: HTMLElement | null = null;
 let image: HTMLImageElement | null = null;
@@ -53,31 +54,51 @@ function closeLightbox() {
   }, 180);
 }
 
+function imageTitle(source: HTMLImageElement) {
+  const card = source.closest('.artifact-card');
+  return card?.querySelector('h2')?.textContent?.trim() || source.alt || 'image';
+}
+
+function installMoteForImage(source: HTMLImageElement) {
+  const host = source.closest<HTMLElement>('.image-result') ?? source.parentElement;
+  if (!host || host.querySelector(`.${OPEN_CLASS}`)) return;
+
+  if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+
+  const button = document.createElement('button');
+  button.className = OPEN_CLASS;
+  button.type = 'button';
+  button.textContent = 'open';
+  button.setAttribute('aria-label', `Open image preview: ${imageTitle(source)}`);
+
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openLightbox(source);
+  });
+
+  host.appendChild(button);
+}
+
+function installMotes() {
+  document.querySelectorAll<HTMLImageElement>(IMAGE_SELECTOR).forEach(installMoteForImage);
+}
+
 export function installImageLightbox() {
+  installMotes();
+  new MutationObserver(() => installMotes()).observe(document.body, { childList: true, subtree: true });
+
   document.addEventListener(
     'pointerdown',
     (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest(IMAGE_SELECTOR)) {
-        // Prevent the parent bubble drag handler from grabbing simple image taps.
-        event.stopPropagation();
-      }
-    },
-    true,
-  );
-
-  document.addEventListener(
-    'click',
-    (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const clickedImage = target.closest<HTMLImageElement>(IMAGE_SELECTOR);
-      if (!clickedImage) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      openLightbox(clickedImage);
+      if (target.closest(`.${OPEN_CLASS}`)) event.stopPropagation();
     },
     true,
   );

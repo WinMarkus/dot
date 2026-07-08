@@ -62,6 +62,13 @@ function closeLightbox() {
   }, 180);
 }
 
+function closeModelPickerAfterSelection() {
+  window.setTimeout(() => {
+    const trigger = document.querySelector<HTMLButtonElement>('.generation-status--button');
+    if (trigger?.getAttribute('aria-expanded') === 'true') trigger.click();
+  }, 0);
+}
+
 function installExpandButtonForFrame(componentFrame: HTMLIFrameElement) {
   const host = componentFrame.parentElement;
   if (!host || host.querySelector(`.${EXPAND_CLASS}`)) return;
@@ -105,6 +112,16 @@ export function installComponentLightbox() {
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest(`.${EXPAND_CLASS}`)) event.stopPropagation();
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'click',
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('.model-picker__option')) closeModelPickerAfterSelection();
     },
     true,
   );

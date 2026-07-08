@@ -49,28 +49,63 @@
   -webkit-line-clamp: 5;
 }
 
-/* The connection halo was visibly misaligned once selected bubbles became organic
-   and wider than their stored model dimensions. Keep the hit target, but remove
-   the big displaced glow; reveal only a subtle living rim on intentional hover. */
+/* Keep the original soft aura language, but compensate for the selected bubble
+   being visually wider than the stored artifact dimensions used by Vue. */
 .weave-halo {
-  background: transparent !important;
-  border: 1px dashed rgba(var(--c-life), 0.06);
-  opacity: 0.18;
-  filter: none !important;
+  border: 0 !important;
+  opacity: 0.7;
+  transform: translateX(58px) scaleX(1.28);
+  transform-origin: center;
+  background: radial-gradient(
+    closest-side,
+    transparent 50%,
+    rgba(var(--c-life), 0.045) 61%,
+    rgba(var(--c-life), 0.11) 73%,
+    rgba(var(--c-life), 0.075) 84%,
+    transparent 100%
+  ) !important;
+  filter: blur(2.5px) !important;
+}
+
+.weave-halo:hover,
+.weave-halo:focus-visible {
+  opacity: 0.96;
+  background: radial-gradient(
+    closest-side,
+    transparent 47%,
+    rgba(var(--c-life), 0.075) 59%,
+    rgba(var(--c-life), 0.22) 73%,
+    rgba(var(--c-life), 0.13) 84%,
+    transparent 100%
+  ) !important;
+  filter: blur(1.3px) brightness(1.12) !important;
+  transform: translateX(58px) scaleX(1.3) scaleY(1.02);
+}
+
+.weave-halo--weaving {
+  opacity: 1;
+  background: radial-gradient(
+    closest-side,
+    transparent 48%,
+    rgba(var(--c-life), 0.12) 60%,
+    rgba(var(--c-life), 0.32) 74%,
+    rgba(var(--c-life), 0.18) 84%,
+    transparent 100%
+  ) !important;
+  filter: blur(1px) brightness(1.18) !important;
+  transform: translateX(58px) scaleX(1.3) scaleY(1.02);
 }
 
 .weave-halo::before,
 .weave-halo::after {
-  opacity: 0 !important;
+  opacity: 0;
 }
 
-.weave-halo:hover,
-.weave-halo:focus-visible,
-.weave-halo--weaving {
-  border-color: rgba(var(--c-life), 0.34);
-  opacity: 0.72;
-  background: radial-gradient(closest-side, transparent 72%, rgba(var(--c-life), 0.08) 82%, transparent 100%) !important;
-  box-shadow: 0 0 34px rgba(var(--c-life), 0.1);
+.weave-halo:hover::before,
+.weave-halo:hover::after,
+.weave-halo--weaving::before,
+.weave-halo--weaving::after {
+  opacity: 1;
 }
 
 .artifact-card--selected .artifact-action-system {
@@ -90,7 +125,7 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background:
-    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.44), transparent 18%),
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.22), transparent 18%),
     radial-gradient(circle at 64% 74%, rgba(var(--c-warm), 0.22), transparent 42%),
     rgba(var(--c-deep), 0.42);
   box-shadow:
@@ -102,33 +137,59 @@
 }
 
 .artifact-card--selected .artifact-action-root span {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   border-radius: inherit;
   background:
-    radial-gradient(circle at var(--root-glint-x, 28%) var(--root-glint-y, 24%), rgba(255, 255, 255, 0.82) 0 7%, transparent 18%),
     radial-gradient(circle at 58% 62%, rgba(var(--c-spark), 0.24), transparent 42%),
     radial-gradient(circle at 50% 50%, transparent 52%, rgba(255, 255, 255, 0.13) 78%, rgba(0, 0, 0, 0.12) 100%);
   box-shadow: none;
-  animation: action-root-glass-glint 4.8s ease-in-out infinite;
+}
+
+.artifact-card--selected .artifact-action-root span::before {
+  position: absolute;
+  inset: -34%;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.86) 0 5%, rgba(255, 255, 255, 0.34) 8%, transparent 17%),
+    linear-gradient(118deg, transparent 28%, rgba(255, 255, 255, 0.24) 44%, transparent 58%);
+  content: "";
+  opacity: 0.82;
+  transform: translate3d(-10%, -7%, 0) rotate(-18deg);
+  animation: action-root-liquid-reflection 12s ease-in-out infinite;
+}
+
+.artifact-card--selected .artifact-action-root span::after {
+  position: absolute;
+  inset: 7px auto auto 8px;
+  width: 11px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  filter: blur(1px);
+  content: "";
+  animation: action-root-small-glint 9s ease-in-out infinite;
 }
 
 .artifact-card--selected .artifact-action-root::after {
   position: absolute;
-  inset: 5px 9px auto auto;
-  width: 12px;
-  height: 18px;
+  inset: 4px 8px auto auto;
+  width: 13px;
+  height: 20px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
-  filter: blur(2px);
+  background: rgba(255, 255, 255, 0.2);
+  filter: blur(2.2px);
   content: "";
   transform: rotate(-22deg);
-  animation: action-root-reflection-slide 5.6s ease-in-out infinite;
+  animation: action-root-outer-reflection 14s ease-in-out infinite;
 }
 
 .artifact-card--selected .artifact-action-root:hover span,
 .artifact-card--selected .artifact-action-system--open .artifact-action-root span {
-  filter: brightness(1.12);
+  filter: brightness(1.08);
 }
 
 .artifact-card--selected .artifact-action {
@@ -182,7 +243,7 @@
 
 :root[data-theme='technical'] .artifact-card--selected .artifact-action-root {
   background:
-    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.36), transparent 18%),
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.16), transparent 18%),
     radial-gradient(circle at 64% 74%, rgba(var(--c-life), 0.24), transparent 42%),
     rgba(var(--c-deep), 0.46);
 }
@@ -193,36 +254,52 @@
 
 :root[data-theme='space'] .artifact-card--selected .artifact-action-root {
   background:
-    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.5), transparent 18%),
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.18), transparent 18%),
     radial-gradient(circle at 64% 74%, rgba(var(--c-life), 0.28), transparent 42%),
     rgba(var(--c-deep), 0.46);
 }
 
-@keyframes action-root-glass-glint {
+@keyframes action-root-liquid-reflection {
   0%,
   100% {
-    --root-glint-x: 27%;
-    --root-glint-y: 23%;
-    transform: rotate(0deg) scale(1);
+    transform: translate3d(-18%, -10%, 0) rotate(-22deg) scale(0.96);
+    opacity: 0.62;
   }
 
-  50% {
-    --root-glint-x: 42%;
-    --root-glint-y: 31%;
-    transform: rotate(8deg) scale(1.035);
+  32% {
+    transform: translate3d(8%, -2%, 0) rotate(-8deg) scale(1.04);
+    opacity: 0.86;
+  }
+
+  68% {
+    transform: translate3d(-2%, 12%, 0) rotate(12deg) scale(1.02);
+    opacity: 0.7;
   }
 }
 
-@keyframes action-root-reflection-slide {
+@keyframes action-root-small-glint {
   0%,
   100% {
-    opacity: 0.34;
+    translate: 0 0;
+    opacity: 0.28;
+  }
+
+  50% {
+    translate: 13px 11px;
+    opacity: 0.56;
+  }
+}
+
+@keyframes action-root-outer-reflection {
+  0%,
+  100% {
+    opacity: 0.24;
     translate: 0 0;
   }
 
   50% {
-    opacity: 0.62;
-    translate: -10px 8px;
+    opacity: 0.5;
+    translate: -15px 14px;
   }
 }
 
@@ -239,10 +316,21 @@
     transform: scale(0.92);
     transform-origin: top right;
   }
+
+  .weave-halo {
+    transform: translateX(22px) scaleX(1.08);
+  }
+
+  .weave-halo:hover,
+  .weave-halo:focus-visible,
+  .weave-halo--weaving {
+    transform: translateX(22px) scaleX(1.1) scaleY(1.02);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .artifact-card--selected .artifact-action-root span,
+  .artifact-card--selected .artifact-action-root span::before,
+  .artifact-card--selected .artifact-action-root span::after,
   .artifact-card--selected .artifact-action-root::after {
     animation: none;
   }

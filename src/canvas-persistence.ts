@@ -235,6 +235,17 @@ export function installCanvasPersistence(rootInstance: unknown) {
 
   const state: DotSetupState = setupState;
   const dock = createDock();
+  const trigger = dock.querySelector<HTMLButtonElement>('.dot-control-center__trigger');
+
+  function setControlsOpen(isOpen: boolean) {
+    dock.classList.toggle('dot-control-center--open', isOpen);
+    trigger?.setAttribute('aria-expanded', String(isOpen));
+  }
+
+  function closeControls() {
+    setControlsOpen(false);
+    trigger?.blur();
+  }
 
   async function loadFromGitHub(manual: boolean) {
     try {
@@ -307,8 +318,7 @@ export function installCanvasPersistence(rootInstance: unknown) {
     const action = button?.dataset.action;
 
     if (action === 'toggle-controls') {
-      const isOpen = dock.classList.toggle('dot-control-center--open');
-      button?.setAttribute('aria-expanded', String(isOpen));
+      setControlsOpen(!dock.classList.contains('dot-control-center--open'));
       return;
     }
 
@@ -316,6 +326,25 @@ export function installCanvasPersistence(rootInstance: unknown) {
     if (action === 'model') openModelPicker();
     if (action === 'save') void saveToGitHub();
     if (action === 'load') void loadFromGitHub(true);
+  });
+
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!dock.classList.contains('dot-control-center--open')) return;
+      if (dock.contains(target)) return;
+      closeControls();
+    },
+    true,
+  );
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && dock.classList.contains('dot-control-center--open')) {
+      event.preventDefault();
+      closeControls();
+    }
   });
 
   window.setTimeout(() => {

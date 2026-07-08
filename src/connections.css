@@ -96,46 +96,156 @@
   place-items: center;
 }
 
-/* The weave halo: no outline, just breathing light around the chosen bubble.
-   Drag anywhere in the glow to pull a tendril out of it. */
+/* The weave halo is a relationship affordance, not a drawing crosshair.
+   Hover reveals theme-specific particles and a clearer grab state. */
 .weave-halo {
   position: absolute;
   z-index: 0;
+  overflow: hidden;
+  border-radius: 999px;
   background: radial-gradient(
     closest-side,
-    transparent 52%,
-    rgba(var(--c-life), 0.05) 62%,
-    rgba(var(--c-life), 0.14) 74%,
-    rgba(var(--c-life), 0.1) 84%,
+    transparent 50%,
+    rgba(var(--c-life), 0.045) 61%,
+    rgba(var(--c-life), 0.11) 73%,
+    rgba(var(--c-life), 0.075) 84%,
     transparent 100%
   );
-  cursor: crosshair;
-  filter: blur(3px);
+  cursor: grab;
+  filter: blur(2.5px);
   animation: weave-halo-breathe 4.6s ease-in-out infinite;
+  transition:
+    opacity 180ms ease,
+    filter 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.weave-halo::before,
+.weave-halo::after {
+  position: absolute;
+  inset: 8%;
+  border-radius: inherit;
+  content: "";
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+}
+
+.weave-halo::before {
+  background: var(--weave-particles-a);
+  animation: weave-particle-drift-a 5.2s linear infinite;
+}
+
+.weave-halo::after {
+  background: var(--weave-particles-b);
+  animation: weave-particle-drift-b 6.4s linear infinite reverse;
+}
+
+.weave-halo:hover,
+.weave-halo:focus-visible {
+  background: radial-gradient(
+    closest-side,
+    transparent 47%,
+    rgba(var(--c-life), 0.075) 59%,
+    rgba(var(--c-life), 0.22) 73%,
+    rgba(var(--c-life), 0.13) 84%,
+    transparent 100%
+  );
+  filter: blur(1.3px) brightness(1.12);
+  transform: scale(1.018);
+  animation-duration: 2.4s;
+}
+
+.weave-halo:hover::before,
+.weave-halo:hover::after,
+.weave-halo:focus-visible::before,
+.weave-halo:focus-visible::after {
+  opacity: 1;
 }
 
 .weave-halo--weaving {
   background: radial-gradient(
     closest-side,
-    transparent 52%,
-    rgba(var(--c-life), 0.1) 62%,
-    rgba(var(--c-life), 0.26) 74%,
-    rgba(var(--c-life), 0.16) 84%,
+    transparent 48%,
+    rgba(var(--c-life), 0.12) 60%,
+    rgba(var(--c-life), 0.32) 74%,
+    rgba(var(--c-life), 0.18) 84%,
     transparent 100%
   );
+  cursor: grabbing;
   animation: none;
+  filter: blur(1px) brightness(1.18);
+}
+
+.weave-halo--weaving::before,
+.weave-halo--weaving::after {
+  opacity: 1;
+}
+
+:root,
+:root[data-theme='nature'] {
+  --weave-particles-a:
+    radial-gradient(circle at 24% 48%, rgba(var(--c-spark), 0.88) 0 2px, transparent 2.4px),
+    radial-gradient(circle at 68% 30%, rgba(var(--c-life), 0.72) 0 1.8px, transparent 2.2px),
+    radial-gradient(circle at 76% 68%, rgba(var(--c-warm), 0.72) 0 1.4px, transparent 1.8px);
+  --weave-particles-b:
+    radial-gradient(circle at 32% 72%, rgba(var(--c-life), 0.58) 0 1.8px, transparent 2.2px),
+    radial-gradient(circle at 58% 52%, rgba(var(--c-spark), 0.7) 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 42% 26%, rgba(var(--c-warm), 0.52) 0 1.5px, transparent 2px);
+}
+
+:root[data-theme='technical'] {
+  --weave-particles-a:
+    linear-gradient(90deg, transparent 0 44%, rgba(var(--c-life), 0.42) 44% 45%, transparent 45% 100%),
+    linear-gradient(0deg, transparent 0 56%, rgba(var(--c-life), 0.36) 56% 57%, transparent 57% 100%),
+    radial-gradient(circle at 34% 42%, rgba(var(--c-spark), 0.72) 0 1.4px, transparent 1.8px);
+  --weave-particles-b:
+    radial-gradient(circle at 66% 34%, rgba(var(--c-life), 0.66) 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 72% 64%, rgba(var(--c-spark), 0.5) 0 1.2px, transparent 1.7px);
+}
+
+:root[data-theme='space'] {
+  --weave-particles-a:
+    radial-gradient(circle at 34% 50%, rgba(var(--c-spark), 0.9) 0 1.7px, transparent 2.2px),
+    radial-gradient(circle at 52% 28%, rgba(var(--c-life), 0.72) 0 1.2px, transparent 1.7px),
+    radial-gradient(circle at 72% 66%, rgba(var(--c-warm), 0.72) 0 2px, transparent 2.5px);
+  --weave-particles-b:
+    radial-gradient(circle at 28% 70%, rgba(var(--c-life), 0.62) 0 1.1px, transparent 1.6px),
+    radial-gradient(circle at 64% 48%, rgba(var(--c-spark), 0.72) 0 1.4px, transparent 1.9px),
+    radial-gradient(circle at 44% 34%, rgba(var(--c-ink), 0.46) 0 0.9px, transparent 1.4px);
 }
 
 @keyframes weave-halo-breathe {
   0%,
   100% {
-    opacity: 0.65;
+    opacity: 0.58;
     scale: 0.985;
   }
 
   50% {
-    opacity: 1;
+    opacity: 0.96;
     scale: 1.02;
+  }
+}
+
+@keyframes weave-particle-drift-a {
+  from {
+    transform: rotate(0deg) scale(0.96);
+  }
+
+  to {
+    transform: rotate(360deg) scale(1.04);
+  }
+}
+
+@keyframes weave-particle-drift-b {
+  from {
+    transform: rotate(0deg) translateX(0);
+  }
+
+  to {
+    transform: rotate(360deg) translateX(4px);
   }
 }
 
@@ -229,6 +339,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .weave-halo,
+  .weave-halo::before,
+  .weave-halo::after,
   .artifact-card--stale,
   .breathe-badge {
     animation: none;

@@ -90,6 +90,50 @@ function isSnapshot(value: unknown): value is DotSnapshot {
   return Boolean(snapshot && snapshot.version === 1 && Array.isArray(snapshot.artifacts));
 }
 
+function clearTransientMotionState(state: DotSetupState) {
+  state.panState = null;
+  state.dotDragState = null;
+  state.artifactDragState = null;
+  state.deletedMarkerDragState = null;
+  state.inspectorDragState = null;
+  state.connectDragState = null;
+  state.dropTargetArtifactId = null;
+  document.documentElement.classList.remove('mobile-canvas-gesture-active');
+}
+
+function installGenerationInteractionGuard(state: DotSetupState) {
+  let wasBusy = false;
+  let frame = 0;
+
+  const isBusy = () => Boolean(state.isGenerating || state.regeneratingArtifactId || state.creatingSuggestionKey);
+
+  const tick = () => {
+    const busy = isBusy();
+    if (busy || wasBusy) clearTransientMotionState(state);
+    wasBusy = busy;
+    frame = requestAnimationFrame(tick);
+  };
+
+  const clearAfterPointerRelease = () => {
+    if (!isBusy()) clearTransientMotionState(state);
+  };
+
+  frame = requestAnimationFrame(tick);
+  document.addEventListener('pointerup', clearAfterPointerRelease);
+  document.addEventListener('pointercancel', clearAfterPointerRelease);
+  window.addEventListener('blur', clearAfterPointerRelease);
+  window.addEventListener(
+    'beforeunload',
+    () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('pointerup', clearAfterPointerRelease);
+      document.removeEventListener('pointercancel', clearAfterPointerRelease);
+      window.removeEventListener('blur', clearAfterPointerRelease);
+    },
+    { once: true },
+  );
+}
+
 function applySnapshot(state: DotSetupState, snapshot: DotSnapshot) {
   state.dot = pointValue(snapshot.dot, { x: 0, y: 0 });
   state.camera = cameraValue(snapshot.camera);
@@ -99,11 +143,8 @@ function applySnapshot(state: DotSetupState, snapshot: DotSnapshot) {
   state.selectedArtifactId = snapshot.selectedArtifactId ?? null;
   state.activeActionArtifactId = null;
   state.inspectedArtifactId = null;
-  state.dropTargetArtifactId = null;
   state.deletingArtifactIds = [];
-  state.artifactDragState = null;
-  state.deletedMarkerDragState = null;
-  state.connectDragState = null;
+  clearTransientMotionState(state);
 
   if (typeof snapshot.theme === 'string' && typeof state.theme === 'string') {
     state.theme = snapshot.theme;
@@ -234,6 +275,8 @@ export function installCanvasPersistence(rootInstance: unknown) {
   }
 
   const state: DotSetupState = setupState;
+  installGenerationInteractionGuard(state);
+
   const dock = createDock();
   const trigger = dock.querySelector<HTMLButtonElement>('.dot-control-center__trigger');
 

@@ -1,5 +1,6 @@
 @import './component-lightbox.css';
 @import './connection-tools.css';
+@import './artifact-preview-lightbox.css';
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 900px) {
   html,

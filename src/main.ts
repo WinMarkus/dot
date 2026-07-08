@@ -25,6 +25,7 @@ import './theme-materials.css';
 import './canvas-persistence.css';
 import './image-lightbox.css';
 import './mobile-finish.css';
+import './artifact-bubble-polish.css';
 import './artifact-open-guard';
 
 installInspectorOriginTracking();

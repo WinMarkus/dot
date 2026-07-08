@@ -7,6 +7,12 @@ type ArtifactContent = {
   css?: string;
   js?: string;
   raw?: string;
+  data?: unknown;
+  ports?: unknown;
+  tags?: string[];
+  imageUrl?: string;
+  alt?: string;
+  storyboard?: string[];
 };
 
 type ArtifactLike = {
@@ -54,6 +60,18 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function prettyJson(value: unknown) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function readableText(content: ArtifactContent) {
+  return content.markdown || content.text || content.summary || content.description || content.raw || '';
 }
 
 function componentSrcDoc(content: ArtifactContent) {
@@ -113,6 +131,49 @@ function ensureLightbox() {
   return { lightbox, titleEl: titleEl!, bodyEl: bodyEl! };
 }
 
+function appendReader(body: HTMLElement, content: ArtifactContent) {
+  const article = document.createElement('article');
+  article.className = 'artifact-preview-lightbox__reader';
+  const text = readableText(content);
+  article.innerHTML = escapeHtml(text || 'No readable text available.').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
+  if (!article.innerHTML.startsWith('<p>')) article.innerHTML = `<p>${article.innerHTML}</p>`;
+  body.appendChild(article);
+}
+
+function appendObjectPreview(body: HTMLElement, content: ArtifactContent) {
+  const section = document.createElement('section');
+  section.className = 'artifact-preview-lightbox__object';
+  const text = readableText(content);
+  const tags = Array.isArray(content.tags) ? content.tags : [];
+  const payload = {
+    data: content.data ?? null,
+    ports: content.ports ?? null,
+  };
+
+  section.innerHTML = `
+    <article class="artifact-preview-lightbox__reader artifact-preview-lightbox__reader--object">
+      <p>${escapeHtml(text || 'No object description available.')}</p>
+      ${tags.length ? `<div class="artifact-preview-lightbox__tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+    </article>
+    <pre class="artifact-preview-lightbox__json">${escapeHtml(prettyJson(payload))}</pre>
+  `;
+  body.appendChild(section);
+}
+
+function appendVideoPreview(body: HTMLElement, content: ArtifactContent) {
+  const section = document.createElement('section');
+  section.className = 'artifact-preview-lightbox__video';
+  const beats = Array.isArray(content.storyboard) ? content.storyboard : [];
+  section.innerHTML = `
+    <div class="artifact-preview-lightbox__video-symbol">▶</div>
+    <article class="artifact-preview-lightbox__reader">
+      <p>${escapeHtml(readableText(content) || 'Video concept preview.')}</p>
+      ${beats.length ? `<ol>${beats.map((beat) => `<li>${escapeHtml(beat)}</li>`).join('')}</ol>` : ''}
+    </article>
+  `;
+  body.appendChild(section);
+}
+
 function openArtifactPreview(artifact: ArtifactLike) {
   const parts = ensureLightbox();
   const content = artifact.content ?? {};
@@ -127,13 +188,12 @@ function openArtifactPreview(artifact: ArtifactLike) {
     iframe.sandbox.add('allow-scripts');
     iframe.srcdoc = componentSrcDoc(content);
     parts.bodyEl.appendChild(iframe);
+  } else if (artifact.kind === 'object') {
+    appendObjectPreview(parts.bodyEl, content);
+  } else if (artifact.kind === 'video') {
+    appendVideoPreview(parts.bodyEl, content);
   } else {
-    const article = document.createElement('article');
-    article.className = 'artifact-preview-lightbox__reader';
-    const text = content.markdown || content.text || content.summary || content.description || content.raw || '';
-    article.innerHTML = escapeHtml(text || 'No readable text available.').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
-    if (!article.innerHTML.startsWith('<p>')) article.innerHTML = `<p>${article.innerHTML}</p>`;
-    parts.bodyEl.appendChild(article);
+    appendReader(parts.bodyEl, content);
   }
 
   parts.lightbox.classList.add('artifact-preview-lightbox--open');
@@ -159,10 +219,7 @@ function buttonLabel(kind: string | undefined) {
 function installButton(card: HTMLElement) {
   if (card.querySelector(`.${BUTTON_CLASS}`)) return;
   const artifact = getArtifactForCard(card);
-  if (!artifact || !['text', 'component'].includes(String(artifact.kind))) return;
-
-  const contentHost = card.querySelector<HTMLElement>('.artifact-content') ?? card;
-  if (getComputedStyle(contentHost).position === 'static') contentHost.style.position = 'relative';
+  if (!artifact || String(artifact.kind) === 'image') return;
 
   const button = document.createElement('button');
   button.className = BUTTON_CLASS;
@@ -180,7 +237,7 @@ function installButton(card: HTMLElement) {
     openArtifactPreview(latest);
   });
 
-  contentHost.appendChild(button);
+  card.appendChild(button);
 }
 
 function installButtons() {

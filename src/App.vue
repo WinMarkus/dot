@@ -394,18 +394,113 @@ const staleArtifactIds = ref<string[]>([]);
 const pulsingConnectionIds = ref<string[]>([]);
 const connectDragState = ref<{ pointerId: number; fromId: string; toWorld: Point; hoverTargetId: string | null } | null>(null);
 
-function artifactVisualSize(artifact: Artifact) {
-  if (selectedArtifactId.value === artifact.id) {
-    return { w: artifact.width, h: getArtifactRenderHeight(artifact) };
-  }
+type ArtifactSize = { w: number; h: number };
+type ArtifactMeasurement = {
+  id: string;
+  layout: ArtifactSize;
+  scale: { x: number; y: number };
+};
 
-  const size = 148 + Math.min(getChildArtifacts(artifact.id).length, 5) * 9;
-  return { w: size, h: size };
+const ORGANIC_BUBBLE_SHAPES = [
+  { closed: '47% 53% 49% 51% / 45% 48% 52% 55%', open: '45% 55% 48% 52% / 43% 47% 53% 57%' },
+  { closed: '54% 46% 51% 49% / 48% 54% 46% 52%', open: '53% 47% 55% 45% / 46% 53% 47% 54%' },
+  { closed: '50% 50% 44% 56% / 55% 44% 56% 45%', open: '49% 51% 43% 57% / 54% 43% 57% 46%' },
+  { closed: '45% 55% 54% 46% / 52% 47% 53% 48%', open: '43% 57% 53% 47% / 50% 46% 54% 50%' },
+  { closed: '52% 48% 46% 54% / 44% 55% 45% 56%', open: '51% 49% 45% 55% / 42% 54% 46% 58%' },
+] as const;
+
+const artifactCardElements = new Map<string, HTMLElement>();
+const selectedArtifactMeasurement = ref<ArtifactMeasurement | null>(null);
+let selectedCardResizeObserver: ResizeObserver | null = null;
+
+function closedArtifactSize(artifact: Artifact): ArtifactSize {
+  const growth = Math.min(getChildArtifacts(artifact.id).length, 5) * 9;
+  const base = 148 + growth;
+  const hash = Math.abs(idHash(artifact.id));
+  return { w: base + (hash % 19) - 9, h: base + (Math.floor(hash / 19) % 17) - 8 };
+}
+
+function selectedArtifactFallbackSize(artifact: Artifact): ArtifactSize {
+  return { w: 430, h: Math.max(285, getArtifactRenderHeight(artifact)) };
+}
+
+function artifactLayoutSize(artifact: Artifact): ArtifactSize {
+  const measurement = selectedArtifactMeasurement.value;
+  if (selectedArtifactId.value === artifact.id && measurement?.id === artifact.id) return measurement.layout;
+  if (selectedArtifactId.value === artifact.id) return selectedArtifactFallbackSize(artifact);
+  return closedArtifactSize(artifact);
+}
+
+function artifactRenderedBounds(artifact: Artifact) {
+  const layout = artifactLayoutSize(artifact);
+  const measurement = selectedArtifactMeasurement.value;
+  const scale = selectedArtifactId.value === artifact.id && measurement?.id === artifact.id ? measurement.scale : { x: 1, y: 1 };
+  const w = layout.w * scale.x;
+  const h = layout.h * scale.y;
+  return { x: artifact.x + (layout.w - w) / 2, y: artifact.y + (layout.h - h) / 2, w, h };
 }
 
 function artifactCenter(artifact: Artifact): Point {
-  const { w, h } = artifactVisualSize(artifact);
-  return { x: artifact.x + w / 2, y: artifact.y + h / 2 };
+  const bounds = artifactRenderedBounds(artifact);
+  return { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
+}
+
+function artifactOrganicStyle(artifact: Artifact) {
+  const size = closedArtifactSize(artifact);
+  const shape = ORGANIC_BUBBLE_SHAPES[Math.abs(idHash(artifact.id)) % ORGANIC_BUBBLE_SHAPES.length];
+  return {
+    '--closed-bubble-width': `${size.w}px`,
+    '--closed-bubble-height': `${size.h}px`,
+    '--bubble-radius-closed': shape.closed,
+    '--bubble-radius-open': shape.open,
+    '--bubble-drift-delay': `${Math.abs(idHash(`${artifact.id}:drift`)) % 6400}ms`,
+  };
+}
+
+function setArtifactCardElement(artifactId: string, element: Element | null) {
+  if (element instanceof HTMLElement) artifactCardElements.set(artifactId, element);
+  else artifactCardElements.delete(artifactId);
+}
+
+function getRenderedScale(element: HTMLElement) {
+  const match = getComputedStyle(element).transform.match(/^matrix\(([^)]+)\)$/);
+  if (!match) return { x: 1, y: 1 };
+  const values = match[1].split(',').map(Number);
+  if (values.length < 4 || values.some((value) => Number.isNaN(value))) return { x: 1, y: 1 };
+  return { x: Math.hypot(values[0], values[1]), y: Math.hypot(values[2], values[3]) };
+}
+
+function syncSelectedArtifactMeasurement() {
+  const artifact = selectedTopLevelArtifact.value;
+  const element = artifact ? artifactCardElements.get(artifact.id) : null;
+  selectedCardResizeObserver?.disconnect();
+
+  if (!artifact || !element) {
+    selectedArtifactMeasurement.value = null;
+    return;
+  }
+
+  const sync = () => {
+    const next: ArtifactMeasurement = {
+      id: artifact.id,
+      layout: { w: element.offsetWidth, h: element.offsetHeight },
+      scale: getRenderedScale(element),
+    };
+    const previous = selectedArtifactMeasurement.value;
+    if (
+      previous?.id !== next.id ||
+      previous.layout.w !== next.layout.w ||
+      previous.layout.h !== next.layout.h ||
+      previous.scale.x !== next.scale.x ||
+      previous.scale.y !== next.scale.y
+    ) {
+      selectedArtifactMeasurement.value = next;
+    }
+  };
+
+  sync();
+  selectedCardResizeObserver = new ResizeObserver(sync);
+  selectedCardResizeObserver.observe(element);
 }
 
 // A slow shared clock that lets tendrils undulate and motes drift.
@@ -423,34 +518,45 @@ function idHash(id: string) {
   return hash;
 }
 
-function quadraticPoint(from: Point, control: Point, to: Point, t: number): Point {
+function cubicPoint(from: Point, controlA: Point, controlB: Point, to: Point, t: number): Point {
   const u = 1 - t;
   return {
-    x: u * u * from.x + 2 * u * t * control.x + t * t * to.x,
-    y: u * u * from.y + 2 * u * t * control.y + t * t * to.y,
+    x: u * u * u * from.x + 3 * u * u * t * controlA.x + 3 * u * t * t * controlB.x + t * t * t * to.x,
+    y: u * u * u * from.y + 3 * u * u * t * controlA.y + 3 * u * t * t * controlB.y + t * t * t * to.y,
   };
 }
 
 function tendrilGeometry(from: Point, to: Point, id: string, phase: number) {
-  const midX = (from.x + to.x) / 2;
-  const midY = (from.y + to.y) / 2;
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const length = Math.max(Math.hypot(dx, dy), 1);
   const hash = idHash(id);
-  const baseWobble = ((Math.abs(hash) % 48) + 26) * (hash % 2 === 0 ? 1 : -1);
-  const sway = Math.sin(phase * 0.55 + (Math.abs(hash) % 63)) * Math.min(14, length / 14);
-  const wobble = baseWobble + sway;
-  const control = { x: midX + (-dy / length) * wobble, y: midY + (dx / length) * wobble };
+  const direction = { x: dx / length, y: dy / length };
+  const perpendicular = { x: -direction.y, y: direction.x };
+  const sign = hash % 2 === 0 ? 1 : -1;
+  const rootBend = sign * (30 + (Math.abs(hash) % 54));
+  const tipBend = -sign * (18 + (Math.floor(Math.abs(hash) / 7) % 48));
+  const sway = Math.sin(phase * (0.38 + (Math.abs(hash) % 3) * 0.08) + (Math.abs(hash) % 41)) * Math.min(22, length / 11);
+  const rootRun = length * (0.19 + (Math.abs(hash) % 13) / 100);
+  const tipRun = length * (0.24 + (Math.floor(Math.abs(hash) / 11) % 15) / 100);
+  const controlA = {
+    x: from.x + direction.x * rootRun + perpendicular.x * (rootBend + sway),
+    y: from.y + direction.y * rootRun + perpendicular.y * (rootBend + sway),
+  };
+  const controlB = {
+    x: to.x - direction.x * tipRun + perpendicular.x * (tipBend - sway * 0.72),
+    y: to.y - direction.y * tipRun + perpendicular.y * (tipBend - sway * 0.72),
+  };
 
   return {
-    control,
-    path: `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`,
-    mid: quadraticPoint(from, control, to, 0.5),
+    controlA,
+    controlB,
+    path: `M ${from.x} ${from.y} C ${controlA.x} ${controlA.y}, ${controlB.x} ${controlB.y}, ${to.x} ${to.y}`,
+    mid: cubicPoint(from, controlA, controlB, to, 0.52),
   };
 }
 
-function tendrilMotes(from: Point, control: Point, to: Point, id: string, phase: number, pulsing: boolean) {
+function tendrilMotes(from: Point, controlA: Point, controlB: Point, to: Point, id: string, phase: number, pulsing: boolean) {
   const hash = Math.abs(idHash(id));
   const count = pulsing ? 4 : 2;
   const speed = pulsing ? 0.34 : 0.085;
@@ -458,12 +564,21 @@ function tendrilMotes(from: Point, control: Point, to: Point, id: string, phase:
   const motes = [];
   for (let i = 0; i < count; i++) {
     const t = (phase * speed + i / count + (hash % 97) / 97) % 1;
-    const point = quadraticPoint(from, control, to, t);
+    const point = cubicPoint(from, controlA, controlB, to, t);
     // Motes are born and fade at the ends, glowing brightest mid-journey.
     const life = Math.sin(t * Math.PI);
     motes.push({ key: `${id}-${i}`, x: point.x, y: point.y, opacity: 0.25 + life * 0.75, r: pulsing ? 3.2 : 2.4 });
   }
   return motes;
+}
+
+function tendrilAnchor(artifact: Artifact, toward: Point): Point {
+  const bounds = artifactRenderedBounds(artifact);
+  const center = { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 };
+  const dx = toward.x - center.x;
+  const dy = toward.y - center.y;
+  const denominator = Math.max(Math.sqrt((dx / Math.max(bounds.w / 2, 1)) ** 2 + (dy / Math.max(bounds.h / 2, 1)) ** 2), 1);
+  return { x: center.x + dx / denominator, y: center.y + dy / denominator };
 }
 
 const renderedConnections = computed(() =>
@@ -474,18 +589,20 @@ const renderedConnections = computed(() =>
 
     const fromCenter = artifactCenter(from);
     const toCenter = artifactCenter(to);
+    const fromAnchor = tendrilAnchor(from, toCenter);
+    const toAnchor = tendrilAnchor(to, fromCenter);
     const pulsing = pulsingConnectionIds.value.includes(connection.id);
-    const geometry = tendrilGeometry(fromCenter, toCenter, connection.id, tendrilPhase.value);
+    const geometry = tendrilGeometry(fromAnchor, toAnchor, connection.id, tendrilPhase.value);
 
     return [
       {
         connection,
-        from: fromCenter,
-        to: toCenter,
+        from: fromAnchor,
+        to: toAnchor,
         path: geometry.path,
         mid: geometry.mid,
         pulsing,
-        motes: tendrilMotes(fromCenter, geometry.control, toCenter, connection.id, tendrilPhase.value, pulsing),
+        motes: tendrilMotes(fromAnchor, geometry.controlA, geometry.controlB, toAnchor, connection.id, tendrilPhase.value, pulsing),
       },
     ];
   }),
@@ -512,12 +629,21 @@ const selectedTopLevelArtifact = computed(() => {
   return artifact && !artifact.parentId ? artifact : null;
 });
 
+const selectedHaloBounds = computed(() => {
+  const artifact = selectedTopLevelArtifact.value;
+  if (!artifact) return null;
+  const bounds = artifactRenderedBounds(artifact);
+  const padding = 42;
+  const shape = ORGANIC_BUBBLE_SHAPES[Math.abs(idHash(artifact.id)) % ORGANIC_BUBBLE_SHAPES.length];
+  return { x: bounds.x - padding, y: bounds.y - padding, w: bounds.w + padding * 2, h: bounds.h + padding * 2, radius: shape.open };
+});
+
 const liveTendrilPath = computed(() => {
   const state = connectDragState.value;
   if (!state) return null;
   const from = findLiveArtifact(state.fromId);
   if (!from) return null;
-  return tendrilGeometry(artifactCenter(from), state.toWorld, state.fromId, tendrilPhase.value).path;
+  return tendrilGeometry(tendrilAnchor(from, state.toWorld), state.toWorld, state.fromId, tendrilPhase.value).path;
 });
 
 function artifactContentSnippet(artifact: Artifact) {
@@ -600,8 +726,8 @@ function findArtifactAtWorldPoint(point: Point, excludeId?: string) {
   return (
     topLevelArtifacts.value.find((candidate) => {
       if (candidate.id === excludeId) return false;
-      const { w, h } = artifactVisualSize(candidate);
-      return point.x >= candidate.x && point.x <= candidate.x + w && point.y >= candidate.y && point.y <= candidate.y + h;
+      const bounds = artifactRenderedBounds(candidate);
+      return point.x >= bounds.x && point.x <= bounds.x + bounds.w && point.y >= bounds.y && point.y <= bounds.y + bounds.h;
     }) ?? null
   );
 }
@@ -812,6 +938,7 @@ async function createFromSuggestion(suggestion: ArtifactSuggestion, index: numbe
 
 watch(selectedArtifactId, (id) => {
   if (id) scheduleSuggestions(id);
+  void nextTick(syncSelectedArtifactMeasurement);
 });
 
 async function hydrateImageArtifact(artifactId: string) {
@@ -1430,6 +1557,7 @@ onMounted(() => {
   resetCamera();
   window.addEventListener('keydown', handleKeydown);
   window.addEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
+  window.addEventListener('resize', syncSelectedArtifactMeasurement);
   void fetchModelCatalog().then((catalog) => {
     modelCatalog.value = catalog;
   });
@@ -1438,6 +1566,8 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
+  window.removeEventListener('resize', syncSelectedArtifactMeasurement);
+  selectedCardResizeObserver?.disconnect();
   if (suggestionTimer) window.clearTimeout(suggestionTimer);
   if (tendrilRaf) cancelAnimationFrame(tendrilRaf);
   deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
@@ -1494,15 +1624,15 @@ onUnmounted(() => {
       </svg>
 
       <div
-        v-if="selectedTopLevelArtifact && !isGenerating && !regeneratingArtifactId"
+        v-if="selectedTopLevelArtifact && selectedHaloBounds && !isGenerating && !regeneratingArtifactId"
         class="weave-halo"
         :class="{ 'weave-halo--weaving': Boolean(connectDragState) }"
         :style="{
-          left: `${selectedTopLevelArtifact.x - 46}px`,
-          top: `${selectedTopLevelArtifact.y - 46}px`,
-          width: `${artifactVisualSize(selectedTopLevelArtifact).w + 92}px`,
-          height: `${artifactVisualSize(selectedTopLevelArtifact).h + 92}px`,
-          borderRadius: selectedArtifactId === selectedTopLevelArtifact.id ? '84px' : '999px',
+          left: `${selectedHaloBounds.x}px`,
+          top: `${selectedHaloBounds.y}px`,
+          width: `${selectedHaloBounds.w}px`,
+          height: `${selectedHaloBounds.h}px`,
+          '--weave-halo-radius': selectedHaloBounds.radius,
         }"
         aria-label="Drag from this glow to weave the bubble to another"
         @pointerdown="handleAuraPointerDown($event, selectedTopLevelArtifact)"
@@ -1529,6 +1659,7 @@ onUnmounted(() => {
       <section
         v-for="artifact in topLevelArtifacts"
         :key="artifact.id"
+        :ref="(element) => setArtifactCardElement(artifact.id, element as Element | null)"
         class="artifact-card"
         :class="[
           `artifact-card--kind-${artifact.kind}`,
@@ -1552,7 +1683,9 @@ onUnmounted(() => {
           width: `${artifact.width}px`,
           minHeight: `${getArtifactRenderHeight(artifact)}px`,
           '--bubble-growth': getChildArtifacts(artifact.id).length,
+          ...artifactOrganicStyle(artifact),
         }"
+        :data-artifact-id="artifact.id"
         tabindex="0"
         aria-label="Generated artifact. Drag to move."
         @pointerdown="handleArtifactPointerDown($event, artifact)"

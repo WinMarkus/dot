@@ -41,7 +41,7 @@ function screenToWorld(point: Point, camera: CameraState): Point {
 function shouldSkip(event: WheelEvent) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return true;
-  return Boolean(target.closest('.model-picker, .canvas-help__panel, .inspector-panel, .image-lightbox, .component-lightbox, textarea, select'));
+  return Boolean(target.closest('.model-picker, .canvas-help__panel, .inspector-panel, .image-lightbox, .artifact-preview-lightbox, textarea, select'));
 }
 
 export function installCanvasWheelZoom(rootInstance: unknown) {

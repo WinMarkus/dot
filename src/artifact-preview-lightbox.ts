@@ -41,6 +41,11 @@ function getArtifacts(state: DotSetupState): ArtifactLike[] {
 }
 
 function getArtifactIdFromCard(card: Element) {
+  const cardId = card.getAttribute('data-artifact-id');
+  if (cardId) return cardId;
+
+  // Older saved canvases may be rendered without the card data attribute.
+  // Keep the action-root lookup as a graceful compatibility fallback.
   const actionRoot = card.querySelector<HTMLElement>('.artifact-action-root');
   const controls = actionRoot?.getAttribute('aria-controls');
   return controls?.startsWith('artifact-') ? controls.slice('artifact-'.length) : null;
@@ -213,7 +218,7 @@ function closeLightbox() {
 function shouldIgnoreBubbleOpen(target: Element) {
   return Boolean(
     target.closest(
-      '.artifact-action-system, .artifact-action-root, .artifact-action, .weave-halo, .nested-bubbles, .deleted-marker, .image-lightbox, .artifact-preview-lightbox, button, input, textarea, select, iframe',
+      '.artifact-action-system, .artifact-action-root, .artifact-action, .weave-halo, .nested-bubbles, .deleted-marker, .image-lightbox, .artifact-preview-lightbox, button, input, textarea, select',
     ),
   );
 }

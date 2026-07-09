@@ -1,51 +1,3 @@
-.artifact-expand-button {
-  position: absolute;
-  right: 18px;
-  bottom: 16px;
-  z-index: 42;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  padding: 7px 10px;
-  color: rgba(var(--c-ink), 0.86);
-  background: rgba(var(--c-deep), 0.72);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(12px);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.68rem;
-  font-weight: 850;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  opacity: 0.86;
-  transition:
-    opacity 160ms ease,
-    transform 160ms ease,
-    border-color 160ms ease,
-    background 160ms ease;
-}
-
-.artifact-expand-button:hover,
-.artifact-expand-button:focus-visible {
-  border-color: rgba(var(--c-warm), 0.44);
-  background: rgba(var(--c-deep), 0.9);
-  opacity: 1;
-  outline: none;
-  transform: translateY(-1px);
-}
-
-.artifact-card:not(.artifact-card--selected) .artifact-expand-button {
-  right: 50%;
-  bottom: 12px;
-  padding: 6px 8px;
-  font-size: 0.56rem;
-  transform: translateX(50%);
-}
-
-.artifact-card:not(.artifact-card--selected) .artifact-expand-button:hover,
-.artifact-card:not(.artifact-card--selected) .artifact-expand-button:focus-visible {
-  transform: translateX(50%) translateY(-1px);
-}
-
 .artifact-preview-lightbox {
   position: fixed;
   inset: 0;
@@ -270,7 +222,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .artifact-expand-button,
   .artifact-preview-lightbox,
   .artifact-preview-lightbox__shell {
     transition: none;

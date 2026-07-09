@@ -68,7 +68,7 @@
 }
 
 .artifact-card:not(.artifact-card--selected) {
-  border-radius: var(--artifact-radius-closed) !important;
+  border-radius: var(--bubble-radius-closed, var(--artifact-radius-closed)) !important;
 }
 
 .artifact-card:not(.artifact-card--selected)::after {
@@ -77,8 +77,8 @@
 }
 
 .artifact-card--selected {
-  border-radius: var(--artifact-radius-open) !important;
-  animation: open-bubble-surface-drift 9s ease-in-out infinite;
+  border-radius: var(--bubble-radius-open, var(--artifact-radius-open)) !important;
+  animation: open-bubble-surface-drift 9s ease-in-out var(--bubble-drift-delay, 0ms) infinite;
 }
 
 :root[data-theme='technical'] .artifact-card:not(.artifact-card--selected),

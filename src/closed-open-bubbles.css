@@ -17,14 +17,16 @@
 .artifact-card {
   /* Closed bubbles breathe with their contents: +9px per nested bubble, capped at 5. */
   --closed-bubble-size: calc(148px + min(var(--bubble-growth, 0), 5) * 9px);
+  --closed-bubble-width: var(--closed-bubble-size);
+  --closed-bubble-height: var(--closed-bubble-size);
 }
 
 .artifact-card:not(.artifact-card--selected) {
   display: grid;
   place-items: center;
-  width: var(--closed-bubble-size) !important;
-  height: var(--closed-bubble-size);
-  min-height: var(--closed-bubble-size) !important;
+  width: var(--closed-bubble-width) !important;
+  height: var(--closed-bubble-height);
+  min-height: var(--closed-bubble-height) !important;
   padding: 18px;
   border-radius: 999px;
   overflow: hidden;

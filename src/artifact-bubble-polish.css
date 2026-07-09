@@ -49,12 +49,13 @@
   -webkit-line-clamp: 5;
 }
 
-/* Keep the original soft aura language, but compensate for the selected bubble
-   being visually wider than the stored artifact dimensions used by Vue. */
+/* The halo is laid out from the measured card bounds in Vue, so it can follow
+   every selected silhouette without the previous fixed horizontal offset. */
 .weave-halo {
   border: 0 !important;
+  border-radius: var(--weave-halo-radius, 50%) !important;
   opacity: 0.7;
-  transform: translateX(58px) scaleX(1.28);
+  transform: none;
   transform-origin: center;
   background: radial-gradient(
     closest-side,
@@ -79,7 +80,7 @@
     transparent 100%
   ) !important;
   filter: blur(1.3px) brightness(1.12) !important;
-  transform: translateX(58px) scaleX(1.3) scaleY(1.02);
+  transform: scale(1.018);
 }
 
 .weave-halo--weaving {
@@ -93,7 +94,7 @@
     transparent 100%
   ) !important;
   filter: blur(1px) brightness(1.18) !important;
-  transform: translateX(58px) scaleX(1.3) scaleY(1.02);
+  transform: scale(1.01);
 }
 
 .weave-halo::before,
@@ -317,15 +318,6 @@
     transform-origin: top right;
   }
 
-  .weave-halo {
-    transform: translateX(22px) scaleX(1.08);
-  }
-
-  .weave-halo:hover,
-  .weave-halo:focus-visible,
-  .weave-halo--weaving {
-    transform: translateX(22px) scaleX(1.1) scaleY(1.02);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

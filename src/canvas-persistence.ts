@@ -1,7 +1,5 @@
 import { installArtifactPreviewLightbox } from './artifact-preview-lightbox';
 import { installCanvasWheelZoom } from './canvas-wheel-zoom';
-import { installComponentLightbox } from './component-lightbox';
-import { installConnectionTools } from './connection-tools';
 import { installMobileCanvasGestures } from './mobile-canvas-gestures';
 import type { Artifact, ArtifactConnection, CameraState, DeletedMarker, Point } from './types';
 
@@ -264,9 +262,7 @@ function openModelPicker() {
 export function installCanvasPersistence(rootInstance: unknown) {
   installMobileCanvasGestures(rootInstance);
   installCanvasWheelZoom(rootInstance);
-  installComponentLightbox();
   installArtifactPreviewLightbox(rootInstance);
-  installConnectionTools(rootInstance);
 
   const setupState = getSetupState(rootInstance);
   if (!setupState) {

@@ -8,6 +8,9 @@
     radial-gradient(circle at 30% 20%, rgba(var(--c-life), 0.12), transparent 42%),
     rgba(0, 0, 0, 0.18);
   box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.18);
+  /* A component is a living texture in the bubble. Tapping it enters the
+     focused artifact preview instead of exposing a separate expand control. */
+  pointer-events: none;
 }
 
 .artifact-content--component {

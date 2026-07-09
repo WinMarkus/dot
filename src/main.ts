@@ -27,6 +27,7 @@ import './image-lightbox.css';
 import './mobile-finish.css';
 import './artifact-bubble-polish.css';
 import './action-root-glass-idle.css';
+import './bubble-direct-open.css';
 import './artifact-open-guard';
 
 installInspectorOriginTracking();

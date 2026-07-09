@@ -23,13 +23,13 @@ type ArtifactLike = {
 
 type DotSetupState = Record<string, unknown>;
 
-const BUTTON_CLASS = 'artifact-expand-button';
 const LIGHTBOX_CLASS = 'artifact-preview-lightbox';
 
 let lightbox: HTMLElement | null = null;
 let titleEl: HTMLElement | null = null;
 let bodyEl: HTMLElement | null = null;
 let stateRef: DotSetupState | null = null;
+let pointerState: { card: HTMLElement; pointerId: number; startX: number; startY: number; moved: boolean } | null = null;
 
 function getSetupState(rootInstance: unknown): DotSetupState | null {
   const instance = rootInstance as { $?: { setupState?: DotSetupState } } | null;
@@ -210,38 +210,19 @@ function closeLightbox() {
   }, 180);
 }
 
-function buttonLabel(kind: string | undefined) {
-  if (kind === 'component') return 'expand';
-  if (kind === 'text') return 'read';
-  return 'open';
+function shouldIgnoreBubbleOpen(target: Element) {
+  return Boolean(
+    target.closest(
+      '.artifact-action-system, .artifact-action-root, .artifact-action, .weave-halo, .nested-bubbles, .deleted-marker, .image-lightbox, .artifact-preview-lightbox, button, input, textarea, select, iframe',
+    ),
+  );
 }
 
-function installButton(card: HTMLElement) {
-  if (card.querySelector(`.${BUTTON_CLASS}`)) return;
-  const artifact = getArtifactForCard(card);
-  if (!artifact || String(artifact.kind) === 'image') return;
-
-  const button = document.createElement('button');
-  button.className = BUTTON_CLASS;
-  button.type = 'button';
-  button.textContent = buttonLabel(artifact.kind);
-  button.setAttribute('aria-label', `${button.textContent} ${artifact.title || 'artifact'}`);
-  button.addEventListener('pointerdown', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  });
-  button.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const latest = getArtifactForCard(card) ?? artifact;
-    openArtifactPreview(latest);
-  });
-
-  card.appendChild(button);
-}
-
-function installButtons() {
-  document.querySelectorAll<HTMLElement>('.artifact-card').forEach(installButton);
+function previewCardFromTarget(target: Element) {
+  const card = target.closest<HTMLElement>('.artifact-card');
+  if (!card || card.classList.contains('artifact-card--kind-image')) return null;
+  if (!getArtifactForCard(card)) return null;
+  return card;
 }
 
 export function installArtifactPreviewLightbox(rootInstance: unknown) {
@@ -251,8 +232,57 @@ export function installArtifactPreviewLightbox(rootInstance: unknown) {
     return;
   }
 
-  installButtons();
-  new MutationObserver(() => installButtons()).observe(document.body, { childList: true, subtree: true });
+  document.addEventListener(
+    'pointerdown',
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || shouldIgnoreBubbleOpen(target)) return;
+      const card = previewCardFromTarget(target);
+      if (!card) return;
+
+      pointerState = {
+        card,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+      };
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'pointermove',
+    (event) => {
+      if (!pointerState || pointerState.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - pointerState.startX, event.clientY - pointerState.startY) > 8) {
+        pointerState.moved = true;
+      }
+    },
+    true,
+  );
+
+  document.addEventListener(
+    'pointerup',
+    (event) => {
+      const state = pointerState;
+      pointerState = null;
+      if (!state || state.pointerId !== event.pointerId || state.moved) return;
+
+      const target = event.target;
+      if (!(target instanceof Element) || shouldIgnoreBubbleOpen(target)) return;
+      const card = previewCardFromTarget(target);
+      if (!card || card !== state.card) return;
+
+      const artifact = getArtifactForCard(card);
+      if (artifact) openArtifactPreview(artifact);
+    },
+    true,
+  );
+
+  document.addEventListener('pointercancel', () => {
+    pointerState = null;
+  });
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && lightbox?.classList.contains('artifact-preview-lightbox--open')) {

@@ -95,6 +95,8 @@ function clearTransientMotionState(state: DotSetupState) {
   state.deletedMarkerDragState = null;
   state.inspectorDragState = null;
   state.connectDragState = null;
+  state.lassoState = null;
+  state.constellation = null;
   state.dropTargetArtifactId = null;
   document.documentElement.classList.remove('mobile-canvas-gesture-active');
 }

@@ -86,6 +86,14 @@ export type ArtifactConnection = {
   createdAt: string;
 };
 
+export type GroupAction = {
+  id: string;
+  title: string;
+  prompt: string;
+  reason: string;
+  kind: ArtifactKind;
+};
+
 export type ConnectedInput = {
   meaning: string;
   kind: ArtifactKind;

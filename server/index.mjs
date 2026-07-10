@@ -779,6 +779,176 @@ app.post('/api/suggest', async (request, response) => {
   }
 });
 
+const groupActionResponseSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['actions'],
+  properties: {
+    actions: {
+      type: 'array',
+      minItems: 2,
+      maxItems: 4,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'kind', 'title', 'prompt', 'reason'],
+        properties: {
+          id: { type: 'string', minLength: 1, maxLength: 40 },
+          kind: { enum: ['text', 'object', 'image', 'video', 'component'] },
+          title: { type: 'string', minLength: 1, maxLength: 48 },
+          prompt: { type: 'string', minLength: 1, maxLength: 520 },
+          reason: { type: 'string', minLength: 1, maxLength: 140 },
+        },
+      },
+    },
+  },
+};
+
+function buildGroupActionSystemPrompt() {
+  return `You are the action imagination engine of Dot, a spatial creation canvas.
+
+The user has lassoed a constellation of artifacts and is asking: “what could these become together?”
+Return 2 to 4 distinct, immediately useful transformations. These are not navigation commands or generic CRUD actions; each must create one meaningful new artifact from the selected sources.
+
+Rules:
+- Read the selected artifact kinds and content. Propose transformations that make semantic use of every source whenever possible.
+- For text-only constellations, favour actions such as distil, compare, rewrite, or make a printable composition.
+- For text + image + component constellations, favour a concrete interactive experience, a story interface, narration, or an input/output transformation.
+- "kind" is the kind of result to generate. A printable composition should be a component or text artifact, never claim to produce a binary PDF.
+- "title" is 2-4 evocative words shown inside a small action bubble.
+- "prompt" is the full, self-contained instruction sent to the artifact generator. It must say how to use the selected sources.
+- "reason" is a quiet, specific explanation of the transformation.
+- Every action must be materially different from the others.
+- Return ONLY valid JSON: {"actions": [{"id":"...","kind":"...","title":"...","prompt":"...","reason":"..."}]}.`;
+}
+
+function normalizeGroupAction(input, index) {
+  const allowedKinds = new Set(['text', 'object', 'image', 'video', 'component']);
+  const id = safeString(input?.id, `action_${index + 1}`).toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 40) || `action_${index + 1}`;
+  return {
+    id,
+    kind: allowedKinds.has(input?.kind) ? input.kind : 'object',
+    title: safeString(input?.title, 'Make something').slice(0, 48),
+    prompt: safeString(input?.prompt).slice(0, 520),
+    reason: safeString(input?.reason, 'A new shape for this constellation.').slice(0, 140),
+  };
+}
+
+function compactGroupActionArtifacts(value) {
+  return safeArray(value)
+    .slice(0, 8)
+    .map((artifact) => ({
+      id: safeString(artifact?.id).slice(0, 80),
+      kind: safeString(artifact?.kind, 'object'),
+      title: safeString(artifact?.title, 'Artifact').slice(0, 60),
+      prompt: safeString(artifact?.prompt).slice(0, 240),
+      purpose: safeString(artifact?.purpose).slice(0, 240),
+      summary: safeString(artifact?.summary).slice(0, 320),
+      content: safeString(artifact?.content).slice(0, 800),
+      ports: artifact?.ports && typeof artifact.ports === 'object' ? artifact.ports : { inputs: [], outputs: [] },
+    }))
+    .filter((artifact) => artifact.id && artifact.title);
+}
+
+app.post('/api/group-actions', async (request, response) => {
+  const startedAt = Date.now();
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const artifacts = compactGroupActionArtifacts(request.body?.artifacts);
+
+  if (!apiKey) {
+    response.status(503).json({ error: 'OPENROUTER_API_KEY is not configured' });
+    return;
+  }
+
+  if (artifacts.length < 2) {
+    response.status(400).json({ error: 'At least two artifacts are required' });
+    return;
+  }
+
+  const model = DEFAULT_SUGGEST_MODEL();
+  const userPayload = {
+    artifacts,
+    canvasContext: compactCanvasContext(request.body?.canvasContext),
+  };
+
+  const requestBody = (responseFormat) => ({
+    model,
+    messages: [
+      { role: 'system', content: buildGroupActionSystemPrompt() },
+      { role: 'user', content: JSON.stringify(userPayload) },
+    ],
+    ...(responseFormat ? { response_format: responseFormat } : {}),
+    temperature: 0.72,
+    max_tokens: 900,
+  });
+
+  async function callGroupActions(responseFormat, providerMode) {
+    const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.PUBLIC_APP_URL || 'http://localhost:3000',
+        'X-Title': 'Dot',
+      },
+      body: JSON.stringify(requestBody(responseFormat)),
+    });
+
+    if (!openRouterResponse.ok) {
+      const detail = await openRouterResponse.text();
+      const error = new Error(`OpenRouter group action request failed: ${openRouterResponse.status}`);
+      error.statusCode = openRouterResponse.status;
+      error.detail = detail.slice(0, 900);
+      throw error;
+    }
+
+    const payload = await openRouterResponse.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') {
+      const error = new Error('OpenRouter group action response did not contain text content');
+      error.statusCode = 502;
+      throw error;
+    }
+
+    const parsed = JSON.parse(extractJsonObject(content));
+    const actions = safeArray(parsed.actions).slice(0, 4).map(normalizeGroupAction).filter((action) => action.prompt);
+    logGeneration('group_actions_success', { model: payload.model || model, providerMode, count: actions.length });
+    return { actions, model: payload.model || model };
+  }
+
+  try {
+    let result;
+    try {
+      result = await callGroupActions(
+        { type: 'json_schema', json_schema: { name: 'dot_group_actions', strict: true, schema: groupActionResponseSchema } },
+        'json_schema',
+      );
+    } catch (schemaError) {
+      if (schemaError.statusCode !== 400 && schemaError.statusCode !== 404) throw schemaError;
+      try {
+        result = await callGroupActions({ type: 'json_object' }, 'json_object');
+      } catch (jsonObjectError) {
+        if (jsonObjectError.statusCode !== 400 && jsonObjectError.statusCode !== 404) throw jsonObjectError;
+        result = await callGroupActions(null, 'plain');
+      }
+    }
+
+    response.json(result);
+    logGeneration('group_actions_request_success', { durationMs: Date.now() - startedAt, model: result.model, count: result.actions.length });
+  } catch (error) {
+    const statusCode = Number(error.statusCode ?? 500);
+    logGenerationError('group_actions_request_failure', {
+      durationMs: Date.now() - startedAt,
+      statusCode,
+      message: error.message || 'Group action suggestion failed',
+      detail: safeString(error.detail).slice(0, 600),
+    });
+    response.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+      error: error.message || 'Group action suggestion failed',
+    });
+  }
+});
+
 app.post('/api/connect', async (request, response) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -917,6 +1087,7 @@ app.post('/api/generate', async (request, response) => {
         mode,
         preferredKind,
         selectedArtifact: request.body?.selectedArtifact ?? null,
+        connectedInputs: request.body?.connectedInputs ?? [],
         canvasContext: request.body?.canvasContext ?? { artifacts: [] },
       },
       modelOverride,

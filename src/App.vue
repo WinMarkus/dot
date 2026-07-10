@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { generateArtifactsWithAi, generateImageWithAi, nameConnection, suggestNextArtifacts } from './ai-client';
+import { generateArtifactsWithAi, generateImageWithAi, nameConnection, suggestGroupActions, suggestNextArtifacts } from './ai-client';
 import type { ArtifactSuggestion } from './ai-client';
 import type { ArtifactConnection, ConnectedInput } from './types';
 import { createArtifactFromGenerated, cloneArtifact, fakeGenerateArtifact, nowLabel } from './artifact-factory';
@@ -22,7 +22,7 @@ import {
 } from './geometry';
 import { fetchModelCatalog, formatModelPrice, loadSavedModel, saveModel, shortModelName } from './model-picker';
 import type { ModelCatalog } from './model-picker';
-import type { Artifact, CameraState, DeletedMarker, DragState, GeneratedArtifact, Point, PromptMode, Viewport } from './types';
+import type { Artifact, CameraState, DeletedMarker, DragState, GeneratedArtifact, GroupAction, Point, PromptMode, Viewport } from './types';
 
 const FORK_SPLIT_MS = 840;
 
@@ -117,6 +117,32 @@ const deletedMarkerDragState = ref<(DragState & { markerId: string }) | null>(nu
 const inspectorDragState = ref<DragState | null>(null);
 const inspectorPosition = ref<Point | null>(null);
 const panState = ref<DragState | null>(null);
+
+type LassoState = {
+  pointerId: number;
+  startCamera: CameraState;
+  startPoint: Point;
+  points: Point[];
+  armed: boolean;
+  hasMoved: boolean;
+};
+
+type Constellation = {
+  artifactIds: string[];
+  center: Point;
+  radius: number;
+};
+
+const lassoState = ref<LassoState | null>(null);
+const constellation = ref<Constellation | null>(null);
+const constellationActions = ref<GroupAction[]>([]);
+const constellationActionsLoading = ref(false);
+const creatingConstellationActionId = ref<string | null>(null);
+const isCustomConstellationPromptOpen = ref(false);
+const customConstellationPrompt = ref('');
+const customConstellationPromptInput = ref<HTMLInputElement | null>(null);
+let lassoArmTimer: number | null = null;
+let constellationActionRequestToken = 0;
 
 const dotClass = computed(() => ({
   'seed-dot--active': isDotActive.value,
@@ -270,6 +296,7 @@ function resetPromptMode() {
 }
 
 function closeTransientUi() {
+  dismissConstellation();
   selectedArtifactId.value = null;
   activeActionArtifactId.value = null;
   inspectedArtifactId.value = null;
@@ -287,7 +314,7 @@ function isWorkspaceGestureTarget(event: Event) {
   if (!(target instanceof HTMLElement)) return false;
 
   return !target.closest(
-    '.artifact-card, .seed-dot, .command-bar, .canvas-help, .inspector-panel, .deleted-marker, .marker-control, .nested-bubbles',
+    '.artifact-card, .seed-dot, .command-bar, .canvas-help, .inspector-panel, .deleted-marker, .marker-control, .nested-bubbles, .constellation-action, .constellation-custom-prompt',
   );
 }
 
@@ -629,6 +656,28 @@ const selectedTopLevelArtifact = computed(() => {
   return artifact && !artifact.parentId ? artifact : null;
 });
 
+const activeConstellationArtifacts = computed(() => {
+  const selection = constellation.value;
+  if (!selection) return [];
+  return selection.artifactIds.map(findLiveArtifact).filter((artifact): artifact is Artifact => Boolean(artifact && !artifact.parentId));
+});
+
+const activeConstellation = computed(() => (activeConstellationArtifacts.value.length >= 2 ? constellation.value : null));
+
+const lassoPath = computed(() => {
+  const points = lassoState.value?.points ?? [];
+  if (!lassoState.value?.armed || points.length < 2) return '';
+  return `M ${points.map((point) => `${point.x} ${point.y}`).join(' L ')}`;
+});
+
+const lassoCandidateArtifactIds = computed(() => {
+  const state = lassoState.value;
+  if (!state?.armed || state.points.length < 3) return [];
+  return topLevelArtifacts.value
+    .filter((artifact) => pointIsInsidePolygon(convertWorldToScreen(artifactCenter(artifact), state.startCamera), state.points))
+    .map((artifact) => artifact.id);
+});
+
 const selectedHaloBounds = computed(() => {
   const artifact = selectedTopLevelArtifact.value;
   if (!artifact) return null;
@@ -843,6 +892,300 @@ function fallbackSuggestions(artifact: Artifact): ArtifactSuggestion[] {
   return byKind[artifact.kind] ?? byKind.object;
 }
 
+function fallbackConstellationActions(sources: Artifact[]): GroupAction[] {
+  const kinds = new Set(sources.map((source) => source.kind));
+  const names = sources.map((source) => source.title).join(', ');
+  const sharedInstruction = `Use every selected source (${names}) as living input, retaining the useful differences between them.`;
+
+  if (kinds.size === 1 && kinds.has('text')) {
+    return [
+      {
+        id: 'distil',
+        kind: 'text',
+        title: 'Distil the thread',
+        prompt: `${sharedInstruction} Create one clear, concise synthesis that captures the shared meaning, tensions, and strongest language.`,
+        reason: 'finds the signal across the writing',
+      },
+      {
+        id: 'rewrite',
+        kind: 'text',
+        title: 'Rewrite together',
+        prompt: `${sharedInstruction} Rewrite the material as one cohesive piece with a confident voice, preserving the best ideas from each source.`,
+        reason: 'lets separate voices become one',
+      },
+      {
+        id: 'printable',
+        kind: 'component',
+        title: 'Printable composition',
+        prompt: `${sharedInstruction} Build a beautifully typeset, printable Vue composition that presents this writing as a quiet finished piece.`,
+        reason: 'gives the words a physical form',
+      },
+    ];
+  }
+
+  if (kinds.has('text') && kinds.has('image') && kinds.has('component')) {
+    return [
+      {
+        id: 'story-interface',
+        kind: 'component',
+        title: 'Story interface',
+        prompt: `${sharedInstruction} Build a self-contained Vue experience where the image, text, and existing component work together as an interactive story.`,
+        reason: 'turns the constellation into an experience',
+      },
+      {
+        id: 'speaking-image',
+        kind: 'component',
+        title: 'Let it speak',
+        prompt: `${sharedInstruction} Build a clickable Vue component that lets the image reveal and perform the text in a meaningful, tactile way.`,
+        reason: 'makes the image and words answer each other',
+      },
+      {
+        id: 'input-output',
+        kind: 'component',
+        title: 'Make a transformer',
+        prompt: `${sharedInstruction} Build a small Vue tool that lets a person transform the selected text through the image and component’s interaction model.`,
+        reason: 'gives the material a new behaviour',
+      },
+    ];
+  }
+
+  if (kinds.has('text') && kinds.has('image')) {
+    return [
+      {
+        id: 'narrate',
+        kind: 'text',
+        title: 'Narrate the image',
+        prompt: `${sharedInstruction} Write an evocative text that gives the image a voice, using the selected writing as its emotional and conceptual guide.`,
+        reason: 'lets the visual and verbal become one voice',
+      },
+      {
+        id: 'interactive-caption',
+        kind: 'component',
+        title: 'Make it speak',
+        prompt: `${sharedInstruction} Build a self-contained Vue component where a person can explore the image and uncover the selected text through interaction.`,
+        reason: 'turns a caption into an encounter',
+      },
+      {
+        id: 'printable-poster',
+        kind: 'component',
+        title: 'Printable poster',
+        prompt: `${sharedInstruction} Build a printable Vue composition that combines the visual source and writing into a compelling poster or editorial page.`,
+        reason: 'makes a shareable composition',
+      },
+    ];
+  }
+
+  if (kinds.has('component')) {
+    return [
+      {
+        id: 'compose-interface',
+        kind: 'component',
+        title: 'Compose an interface',
+        prompt: `${sharedInstruction} Build one purposeful self-contained Vue component that turns the selected materials into a coherent interactive tool.`,
+        reason: 'gives the constellation a useful surface',
+      },
+      {
+        id: 'explain-system',
+        kind: 'text',
+        title: 'Explain the system',
+        prompt: `${sharedInstruction} Write a lucid explanation of how these artifacts relate, what they enable, and how someone should use them together.`,
+        reason: 'makes the relationship legible',
+      },
+      {
+        id: 'living-brief',
+        kind: 'object',
+        title: 'Make a living brief',
+        prompt: `${sharedInstruction} Create a structured semantic brief that captures the goals, inputs, behaviours, and next decisions for this constellation.`,
+        reason: 'turns a cluster into an actionable shape',
+      },
+    ];
+  }
+
+  return [
+    {
+      id: 'synthesise',
+      kind: 'text',
+      title: 'Find the thread',
+      prompt: `${sharedInstruction} Create a thoughtful synthesis that explains the shared idea and the most interesting relationships between the sources.`,
+      reason: 'reveals what the group is really about',
+    },
+    {
+      id: 'new-structure',
+      kind: 'object',
+      title: 'Give it a shape',
+      prompt: `${sharedInstruction} Create a clear structured object that reorganises these sources into a useful new model or plan.`,
+      reason: 'makes the constellation easier to act on',
+    },
+    {
+      id: 'new-experience',
+      kind: 'component',
+      title: 'Make it living',
+      prompt: `${sharedInstruction} Build a small self-contained Vue experience that lets someone explore and use the ideas together.`,
+      reason: 'turns related things into behaviour',
+    },
+  ];
+}
+
+function constellationSources(selection = activeConstellation.value) {
+  if (!selection) return [];
+  return selection.artifactIds.map(findLiveArtifact).filter((artifact): artifact is Artifact => Boolean(artifact && !artifact.parentId));
+}
+
+function constellationConnectedInputs(sources: Artifact[], action: GroupAction): ConnectedInput[] {
+  return sources.map((source) => ({
+    meaning: `${action.title.toLowerCase()} source`,
+    kind: source.kind,
+    title: source.title,
+    content: artifactContentSnippet(source),
+  }));
+}
+
+function dismissConstellation() {
+  constellationActionRequestToken += 1;
+  constellation.value = null;
+  constellationActions.value = [];
+  constellationActionsLoading.value = false;
+  isCustomConstellationPromptOpen.value = false;
+  customConstellationPrompt.value = '';
+}
+
+async function loadConstellationActions(selection: Constellation) {
+  const sources = constellationSources(selection);
+  if (sources.length < 2) return;
+
+  const fallback = fallbackConstellationActions(sources);
+  constellationActions.value = fallback;
+  constellationActionsLoading.value = true;
+  const token = ++constellationActionRequestToken;
+
+  try {
+    const actions = await suggestGroupActions({
+      artifacts: sources.map((source) => ({
+        id: source.id,
+        kind: source.kind,
+        title: source.title,
+        prompt: source.prompt,
+        purpose: source.content.purpose ?? '',
+        summary: source.content.summary ?? '',
+        content: artifactContentSnippet(source),
+        ports: source.content.ports ?? { inputs: [], outputs: [] },
+      })),
+      canvasContext: createCanvasContext(),
+    });
+
+    if (token !== constellationActionRequestToken || !constellation.value) return;
+    if (actions.length) constellationActions.value = actions;
+  } catch (error) {
+    console.warn('Constellation action planning failed, keeping local actions.', error);
+  } finally {
+    if (token === constellationActionRequestToken) constellationActionsLoading.value = false;
+  }
+}
+
+function createConstellation(artifactIds: string[]) {
+  const sources = artifactIds.map(findLiveArtifact).filter((artifact): artifact is Artifact => Boolean(artifact && !artifact.parentId));
+  if (sources.length < 2) return;
+
+  const bounds = sources.map(artifactRenderedBounds);
+  const minX = Math.min(...bounds.map((bound) => bound.x));
+  const minY = Math.min(...bounds.map((bound) => bound.y));
+  const maxX = Math.max(...bounds.map((bound) => bound.x + bound.w));
+  const maxY = Math.max(...bounds.map((bound) => bound.y + bound.h));
+  const selection: Constellation = {
+    artifactIds: sources.map((source) => source.id),
+    center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+    radius: Math.max(maxX - minX, maxY - minY) / 2,
+  };
+
+  selectedArtifactId.value = null;
+  activeActionArtifactId.value = null;
+  inspectedArtifactId.value = null;
+  isDotActive.value = false;
+  resetPromptMode();
+  constellation.value = selection;
+  void loadConstellationActions(selection);
+}
+
+function constellationActionPosition(index: number, total: number) {
+  const selection = activeConstellation.value;
+  if (!selection) return dot.value;
+  const angle = ((-145 + (index * 290) / Math.max(total - 1, 1)) * Math.PI) / 180;
+  const radius = Math.max(154, selection.radius + 134);
+  return {
+    x: selection.center.x + Math.cos(angle) * radius,
+    y: selection.center.y + Math.sin(angle) * radius,
+  };
+}
+
+function constellationResultPosition(action: GroupAction) {
+  const index = Math.max(constellationActions.value.findIndex((candidate) => candidate.id === action.id), 0);
+  const point = constellationActionPosition(index, constellationActions.value.length + 1);
+  return { x: point.x - ARTIFACT_WIDTH / 2, y: point.y - ARTIFACT_HEIGHT / 2 };
+}
+
+async function executeConstellationAction(action: GroupAction, customPrompt?: string) {
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+  const sources = constellationSources();
+  if (sources.length < 2) return;
+
+  const prompt = customPrompt
+    ? `${customPrompt}\n\nUse the lassoed constellation as living source material. Make one meaningful new artifact that uses every source where relevant.`
+    : action.prompt;
+  const position = constellationResultPosition(action);
+  creatingConstellationActionId.value = action.id;
+  isGenerating.value = true;
+
+  try {
+    const generated = await requestGeneratedArtifacts(
+      prompt,
+      'create',
+      undefined,
+      customPrompt ? undefined : action.kind,
+      constellationConnectedInputs(sources, action),
+    );
+    const created = placeGeneratedArtifacts(generated, prompt, position);
+    const meaning = customPrompt ? 'made from this constellation' : action.reason.toLowerCase().replace(/\.$/, '').slice(0, 60);
+
+    created.forEach((result) => {
+      sources.forEach((source) => {
+        void createConnection(source.id, result.id, meaning);
+      });
+      clearStale(result.id);
+    });
+
+    dismissConstellation();
+    selectedArtifactId.value = created[0]?.id ?? null;
+  } finally {
+    isGenerating.value = false;
+    creatingConstellationActionId.value = null;
+  }
+}
+
+function openCustomConstellationPrompt() {
+  if (!activeConstellation.value || isGenerating.value) return;
+  isCustomConstellationPromptOpen.value = true;
+  customConstellationPrompt.value = '';
+  nextTick(() => customConstellationPromptInput.value?.focus());
+}
+
+function closeCustomConstellationPrompt() {
+  isCustomConstellationPromptOpen.value = false;
+  customConstellationPrompt.value = '';
+}
+
+function submitCustomConstellationPrompt() {
+  const prompt = customConstellationPrompt.value.trim();
+  if (!prompt) return;
+  const action: GroupAction = {
+    id: 'custom',
+    kind: 'object',
+    title: 'Your intention',
+    prompt,
+    reason: 'made from this constellation',
+  };
+  void executeConstellationAction(action, prompt);
+}
+
 async function loadSuggestions(artifactId: string) {
   if (suggestionCache.value[artifactId]?.length) return;
 
@@ -1054,6 +1397,79 @@ function extractNestedArtifact(child: Artifact, parent: Artifact, index: number)
   activeActionArtifactId.value = null;
 }
 
+const LASSO_ARM_DELAY_MS = 180;
+
+function clearLassoArmTimer() {
+  if (lassoArmTimer !== null) window.clearTimeout(lassoArmTimer);
+  lassoArmTimer = null;
+}
+
+function pointDistance(a: Point, b: Point) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function appendLassoPoint(state: LassoState, point: Point) {
+  const previous = state.points[state.points.length - 1];
+  if (!previous || pointDistance(previous, point) >= 3) state.points.push(point);
+}
+
+function lassoPathLength(points: Point[]) {
+  return points.slice(1).reduce((length, point, index) => length + pointDistance(points[index], point), 0);
+}
+
+function lassoArea(points: Point[]) {
+  return Math.abs(
+    points.reduce((area, point, index) => {
+      const next = points[(index + 1) % points.length];
+      return area + point.x * next.y - next.x * point.y;
+    }, 0) / 2,
+  );
+}
+
+function pointIsInsidePolygon(point: Point, polygon: Point[]) {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const currentPoint = polygon[index];
+    const previousPoint = polygon[previous];
+    const crosses =
+      currentPoint.y > point.y !== previousPoint.y > point.y &&
+      point.x < ((previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)) / (previousPoint.y - currentPoint.y) + currentPoint.x;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+function lassoIsClosed(state: LassoState) {
+  const length = lassoPathLength(state.points);
+  const first = state.points[0];
+  const last = state.points[state.points.length - 1];
+  const closeEnough = first && last && pointDistance(first, last) <= Math.max(34, Math.min(108, length * 0.16));
+  return state.points.length >= 8 && length >= 120 && lassoArea(state.points) >= 2200 && closeEnough;
+}
+
+function lassoedArtifactIds(state: LassoState) {
+  return topLevelArtifacts.value
+    .filter((artifact) => pointIsInsidePolygon(convertWorldToScreen(artifactCenter(artifact), state.startCamera), state.points))
+    .map((artifact) => artifact.id);
+}
+
+function armLasso(pointerId: number) {
+  const state = lassoState.value;
+  if (!state || state.pointerId !== pointerId || state.hasMoved) return;
+  state.armed = true;
+  state.points = [state.startPoint];
+  panState.value = null;
+  camera.value = { ...state.startCamera };
+  clearLassoArmTimer();
+}
+
+function cancelLasso(pointerId?: number) {
+  const state = lassoState.value;
+  if (pointerId !== undefined && state?.pointerId !== pointerId) return;
+  clearLassoArmTimer();
+  lassoState.value = null;
+}
+
 function handleDotPointerDown(event: PointerEvent) {
   if (isGenerating.value) return;
   event.stopPropagation();
@@ -1102,6 +1518,7 @@ function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
   if (deletingArtifactIds.value.includes(artifact.id) || artifact.parentId) return;
 
   event.stopPropagation();
+  dismissConstellation();
   selectedArtifactId.value = artifact.id;
 
   const target = event.currentTarget as HTMLElement;
@@ -1253,6 +1670,8 @@ function handleWorkspacePointerDown(event: PointerEvent) {
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
 
+  const startPoint = { x: event.clientX, y: event.clientY };
+
   panState.value = {
     pointerId: event.pointerId,
     startPointerX: event.clientX,
@@ -1261,9 +1680,43 @@ function handleWorkspacePointerDown(event: PointerEvent) {
     startY: camera.value.y,
     moved: false,
   };
+
+  // A short, still press turns a blank-canvas gesture into a lasso. Immediate
+  // drags retain the existing pan behaviour, so the surface stays fluid.
+  if (event.isPrimary && event.button === 0 && event.pointerType !== 'touch') {
+    lassoState.value = {
+      pointerId: event.pointerId,
+      startCamera: { ...camera.value },
+      startPoint,
+      points: [startPoint],
+      armed: false,
+      hasMoved: false,
+    };
+
+    if (event.shiftKey) {
+      armLasso(event.pointerId);
+    } else {
+      clearLassoArmTimer();
+      lassoArmTimer = window.setTimeout(() => armLasso(event.pointerId), LASSO_ARM_DELAY_MS);
+    }
+  }
 }
 
 function handleWorkspacePointerMove(event: PointerEvent) {
+  const lasso = lassoState.value;
+  if (lasso?.pointerId === event.pointerId) {
+    const point = { x: event.clientX, y: event.clientY };
+    if (lasso.armed) {
+      appendLassoPoint(lasso, point);
+      return;
+    }
+
+    if (pointDistance(lasso.startPoint, point) > 8) {
+      lasso.hasMoved = true;
+      clearLassoArmTimer();
+    }
+  }
+
   const state = panState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
@@ -1278,6 +1731,22 @@ function handleWorkspacePointerMove(event: PointerEvent) {
 }
 
 function handleWorkspacePointerUp(event: PointerEvent) {
+  const lasso = lassoState.value;
+  if (lasso?.pointerId === event.pointerId && lasso.armed) {
+    const target = event.currentTarget as HTMLElement;
+    appendLassoPoint(lasso, { x: event.clientX, y: event.clientY });
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
+    panState.value = null;
+    cancelLasso(event.pointerId);
+
+    if (lassoIsClosed(lasso)) {
+      const selectedIds = lassoedArtifactIds(lasso);
+      if (selectedIds.length >= 2) createConstellation(selectedIds);
+    }
+    return;
+  }
+
+  cancelLasso(event.pointerId);
   const state = panState.value;
   if (!state || state.pointerId !== event.pointerId) return;
 
@@ -1295,6 +1764,16 @@ function handleWorkspacePointerUp(event: PointerEvent) {
 
     dot.value = screenToWorld({ x: state.startPointerX, y: state.startPointerY });
   }
+}
+
+function handleWorkspacePointerCancel(event: PointerEvent) {
+  cancelLasso(event.pointerId);
+  const state = panState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  const target = event.currentTarget as HTMLElement;
+  if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
+  panState.value = null;
 }
 
 function handleWorkspaceDoubleClick(event: MouseEvent) {
@@ -1538,6 +2017,10 @@ function handleKeydown(event: KeyboardEvent) {
   const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
 
   if (event.key === 'Escape') {
+    if (activeConstellation.value) {
+      dismissConstellation();
+      return;
+    }
     if (inspectedArtifactId.value) {
       closeInspector();
       return;
@@ -1568,6 +2051,7 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
   window.removeEventListener('resize', syncSelectedArtifactMeasurement);
   selectedCardResizeObserver?.disconnect();
+  clearLassoArmTimer();
   if (suggestionTimer) window.clearTimeout(suggestionTimer);
   if (tendrilRaf) cancelAnimationFrame(tendrilRaf);
   deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
@@ -1578,17 +2062,22 @@ onUnmounted(() => {
 <template>
   <main
     class="workspace"
-    :class="{ 'workspace--panning': Boolean(panState) }"
+    :class="{ 'workspace--panning': Boolean(panState), 'workspace--lassoing': Boolean(lassoState?.armed) }"
     :style="gridStyle"
     aria-label="Dot creation canvas"
     @pointerdown="handleWorkspacePointerDown"
     @pointermove="handleWorkspacePointerMove"
     @pointerup="handleWorkspacePointerUp"
+    @pointercancel="handleWorkspacePointerCancel"
     @dblclick="handleWorkspaceDoubleClick"
     @wheel="handleWheel"
   >
     <div class="ambient ambient--one" />
     <div class="ambient ambient--two" />
+
+    <svg v-if="lassoPath" class="constellation-lasso" aria-hidden="true">
+      <path :d="lassoPath" />
+    </svg>
 
     <div class="world" :style="worldTransform">
       <svg class="tendril-layer" aria-hidden="true">
@@ -1640,6 +2129,92 @@ onUnmounted(() => {
         @pointerup="handleAuraPointerUp"
       />
 
+      <template v-if="activeConstellation">
+        <span
+          class="constellation-core"
+          :style="{
+            left: `${activeConstellation.center.x}px`,
+            top: `${activeConstellation.center.y}px`,
+            width: `${Math.max(68, activeConstellation.radius * 1.24)}px`,
+            height: `${Math.max(68, activeConstellation.radius * 1.24)}px`,
+          }"
+          aria-hidden="true"
+        />
+
+        <button
+          v-for="(action, index) in constellationActions"
+          :key="`constellation-${action.id}-${index}`"
+          class="constellation-action"
+          :class="{
+            'constellation-action--creating': creatingConstellationActionId === action.id,
+            'constellation-action--waiting': isGenerating && creatingConstellationActionId !== action.id,
+          }"
+          type="button"
+          :disabled="isGenerating"
+          :title="action.reason"
+          :aria-label="`Create from constellation: ${action.title}`"
+          :style="{
+            left: `${constellationActionPosition(index, constellationActions.length + 1).x}px`,
+            top: `${constellationActionPosition(index, constellationActions.length + 1).y}px`,
+            '--constellation-delay': `${index * 120}ms`,
+          }"
+          @pointerdown.stop
+          @pointermove.stop
+          @pointerup.stop
+          @click.stop="executeConstellationAction(action)"
+        >
+          <span>{{ action.title }}</span>
+          <small>{{ action.reason }}</small>
+          <i v-if="constellationActionsLoading" aria-hidden="true" />
+        </button>
+
+        <button
+          v-if="!isCustomConstellationPromptOpen"
+          class="constellation-action constellation-action--custom"
+          :class="{ 'constellation-action--waiting': isGenerating }"
+          type="button"
+          :disabled="isGenerating"
+          title="Describe a transformation for this constellation"
+          aria-label="Describe a custom constellation action"
+          :style="{
+            left: `${constellationActionPosition(constellationActions.length, constellationActions.length + 1).x}px`,
+            top: `${constellationActionPosition(constellationActions.length, constellationActions.length + 1).y}px`,
+            '--constellation-delay': `${constellationActions.length * 120}ms`,
+          }"
+          @pointerdown.stop
+          @pointermove.stop
+          @pointerup.stop
+          @click.stop="openCustomConstellationPrompt"
+        >
+          <span>Make something…</span>
+          <small>your intention</small>
+        </button>
+
+        <form
+          v-else
+          class="constellation-custom-prompt"
+          :class="{ 'constellation-custom-prompt--creating': creatingConstellationActionId === 'custom' }"
+          :style="{
+            left: `${constellationActionPosition(constellationActions.length, constellationActions.length + 1).x}px`,
+            top: `${constellationActionPosition(constellationActions.length, constellationActions.length + 1).y}px`,
+          }"
+          @pointerdown.stop
+          @pointermove.stop
+          @pointerup.stop
+          @submit.prevent="submitCustomConstellationPrompt"
+        >
+          <input
+            ref="customConstellationPromptInput"
+            v-model="customConstellationPrompt"
+            :disabled="isGenerating"
+            aria-label="Describe what to make from the selected constellation"
+            placeholder="what should these become?"
+            @keydown.esc.stop.prevent="closeCustomConstellationPrompt"
+          />
+          <span>enter to weave</span>
+        </form>
+      </template>
+
       <button
         v-for="marker in deletedMarkers"
         :key="marker.id"
@@ -1675,6 +2250,8 @@ onUnmounted(() => {
           'artifact-card--image-orb': artifact.kind === 'image' && Boolean(artifact.content.imageUrl),
           'artifact-card--stale': staleArtifactIds.includes(artifact.id),
           'artifact-card--connect-target': connectDragState?.hoverTargetId === artifact.id,
+          'artifact-card--lasso-candidate': lassoCandidateArtifactIds.includes(artifact.id),
+          'artifact-card--constellation-source': activeConstellation?.artifactIds.includes(artifact.id),
           },
         ]"
         :style="{

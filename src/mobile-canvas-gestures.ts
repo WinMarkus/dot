@@ -74,6 +74,8 @@ function clearSinglePointerDragStates(state: DotSetupState) {
   state.deletedMarkerDragState = null;
   state.inspectorDragState = null;
   state.connectDragState = null;
+  state.lassoState = null;
+  state.constellation = null;
   state.dropTargetArtifactId = null;
 }
 

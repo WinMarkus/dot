@@ -1,0 +1,350 @@
+/* A lasso is a quiet, temporary reading of a region — not a selection box. */
+.constellation-lasso {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.constellation-lasso path {
+  fill: rgba(var(--c-life), 0.045);
+  stroke: rgba(var(--c-life), 0.72);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 3 8;
+  filter: drop-shadow(0 0 8px rgba(var(--c-life), 0.42));
+  animation: constellation-lasso-flow 1.4s linear infinite;
+}
+
+.workspace--lassoing {
+  cursor: cell;
+}
+
+.constellation-core {
+  position: absolute;
+  z-index: 3;
+  border: 1px dashed rgba(var(--c-life), 0.32);
+  border-radius: 48% 52% 46% 54% / 54% 45% 55% 46%;
+  background:
+    radial-gradient(ellipse at 40% 36%, rgba(var(--c-spark), 0.1), transparent 42%),
+    radial-gradient(ellipse at 60% 64%, rgba(var(--c-life), 0.08), transparent 58%);
+  box-shadow:
+    0 0 32px rgba(var(--c-life), 0.1),
+    inset 0 0 32px rgba(var(--c-life), 0.06);
+  opacity: 0.72;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: constellation-core-breathe 4.8s ease-in-out infinite;
+}
+
+.artifact-card--constellation-source {
+  z-index: 9;
+  border-color: rgba(var(--c-life), 0.46) !important;
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.34),
+    0 0 38px rgba(var(--c-life), 0.14),
+    inset 0 1px rgba(var(--c-life), 0.16) !important;
+}
+
+.artifact-card--lasso-candidate:not(.artifact-card--constellation-source) {
+  border-color: rgba(var(--c-spark), 0.52) !important;
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.34),
+    0 0 28px rgba(var(--c-spark), 0.14) !important;
+}
+
+.constellation-action {
+  position: absolute;
+  z-index: 20;
+  display: grid;
+  width: 126px;
+  min-height: 126px;
+  place-content: center;
+  gap: 7px;
+  overflow: hidden;
+  padding: 18px 15px;
+  border: 1px dashed rgba(var(--c-life), 0.42);
+  border-radius: 47% 53% 50% 50% / 52% 46% 54% 48%;
+  color: rgba(var(--c-ink), 0.84);
+  background:
+    radial-gradient(circle at 31% 24%, rgba(255, 255, 255, 0.13), transparent 23%),
+    radial-gradient(circle at 70% 72%, rgba(var(--c-life), 0.12), transparent 48%),
+    rgba(var(--c-deep), 0.45);
+  box-shadow:
+    0 22px 56px rgba(0, 0, 0, 0.3),
+    0 0 32px rgba(var(--c-life), 0.1),
+    inset 0 1px rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  animation:
+    constellation-action-arrive 560ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    constellation-action-drift 5.8s ease-in-out calc(var(--constellation-delay, 0ms) - 2s) infinite alternate;
+  animation-delay: var(--constellation-delay, 0ms), calc(var(--constellation-delay, 0ms) - 2s);
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.constellation-action::before {
+  position: absolute;
+  inset: 9%;
+  border: 1px solid rgba(var(--c-life), 0.08);
+  border-radius: inherit;
+  content: "";
+  opacity: 0.7;
+  pointer-events: none;
+  transform: rotate(-9deg);
+}
+
+.constellation-action span,
+.constellation-action small {
+  position: relative;
+  z-index: 1;
+}
+
+.constellation-action span {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 94px;
+  color: rgba(var(--c-ink), 0.9);
+  font-size: 0.74rem;
+  font-weight: 820;
+  line-height: 1.14;
+  text-wrap: balance;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.constellation-action small {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 91px;
+  color: rgba(var(--c-life), 0.62);
+  font-size: 0.55rem;
+  font-style: italic;
+  font-weight: 690;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.constellation-action:hover,
+.constellation-action:focus-visible {
+  border-color: rgba(var(--c-warm), 0.66);
+  border-style: solid;
+  color: rgba(var(--c-ink), 0.98);
+  background:
+    radial-gradient(circle at 31% 24%, rgba(255, 255, 255, 0.18), transparent 23%),
+    radial-gradient(circle at 70% 72%, rgba(var(--c-warm), 0.2), transparent 48%),
+    rgba(var(--c-deep-warm), 0.66);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.36),
+    0 0 42px rgba(var(--c-warm), 0.22),
+    inset 0 1px rgba(255, 255, 255, 0.15);
+  outline: none;
+}
+
+.constellation-action:hover small,
+.constellation-action:focus-visible small {
+  color: rgba(var(--c-warm), 0.88);
+}
+
+.constellation-action--custom {
+  border-style: solid;
+  border-color: rgba(var(--c-spark), 0.35);
+  background:
+    radial-gradient(circle at 31% 24%, rgba(255, 255, 255, 0.14), transparent 23%),
+    radial-gradient(circle at 70% 72%, rgba(var(--c-spark), 0.12), transparent 48%),
+    rgba(var(--c-deep), 0.42);
+}
+
+.constellation-action--creating {
+  border-color: rgba(var(--c-warm), 0.74);
+  border-style: solid;
+  pointer-events: none;
+  animation: constellation-action-creating 1.05s ease-in-out infinite;
+}
+
+.constellation-action--creating::after,
+.constellation-action i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(var(--c-spark), 0.92);
+  box-shadow: 0 0 12px rgba(var(--c-warm), 0.82);
+  content: "";
+  pointer-events: none;
+}
+
+.constellation-action--creating::after {
+  animation: constellation-mote-orbit 1.4s linear infinite;
+}
+
+.constellation-action i {
+  animation: constellation-mote-orbit 2.1s linear infinite reverse;
+}
+
+.constellation-action--waiting {
+  opacity: 0.34;
+  pointer-events: none;
+}
+
+.constellation-custom-prompt {
+  position: absolute;
+  z-index: 21;
+  display: grid;
+  width: min(270px, calc(100vw - 48px));
+  gap: 8px;
+  padding: 18px 20px 15px;
+  border: 1px solid rgba(var(--c-life), 0.3);
+  border-radius: 46% 54% 48% 52% / 50% 46% 54% 50%;
+  background:
+    radial-gradient(circle at 26% 18%, rgba(255, 255, 255, 0.12), transparent 24%),
+    rgba(var(--c-deep), 0.7);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.42),
+    0 0 38px rgba(var(--c-life), 0.12);
+  backdrop-filter: blur(18px);
+  transform: translate(-50%, -50%);
+  animation: constellation-action-arrive 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.constellation-custom-prompt input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(var(--c-life), 0.22);
+  outline: 0;
+  padding: 5px 1px 8px;
+  color: rgba(var(--c-ink), 0.94);
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.constellation-custom-prompt input::placeholder {
+  color: rgba(var(--c-ink), 0.48);
+}
+
+.constellation-custom-prompt span {
+  color: rgba(var(--c-life), 0.58);
+  font-size: 0.56rem;
+  font-style: italic;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.constellation-custom-prompt--creating {
+  pointer-events: none;
+  animation: constellation-action-creating 1.05s ease-in-out infinite;
+}
+
+@keyframes constellation-lasso-flow {
+  to {
+    stroke-dashoffset: -22px;
+  }
+}
+
+@keyframes constellation-core-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+    scale: 0.96;
+  }
+
+  50% {
+    opacity: 0.86;
+    scale: 1.04;
+  }
+}
+
+@keyframes constellation-action-arrive {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.56);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes constellation-action-drift {
+  from {
+    translate: -2px -5px;
+  }
+
+  to {
+    translate: 3px 5px;
+  }
+}
+
+@keyframes constellation-action-creating {
+  0%,
+  100% {
+    box-shadow: 0 0 28px rgba(var(--c-warm), 0.2);
+    scale: 0.94;
+  }
+
+  50% {
+    box-shadow: 0 0 54px rgba(var(--c-warm), 0.44);
+    scale: 1.06;
+  }
+}
+
+@keyframes constellation-mote-orbit {
+  from {
+    transform: rotate(0deg) translateX(66px);
+  }
+
+  to {
+    transform: rotate(360deg) translateX(66px);
+  }
+}
+
+@media (max-width: 760px) {
+  .constellation-action {
+    width: 108px;
+    min-height: 108px;
+    padding: 14px 12px;
+  }
+
+  .constellation-action span {
+    max-width: 80px;
+    font-size: 0.68rem;
+  }
+
+  .constellation-action small {
+    max-width: 78px;
+  }
+
+  .constellation-custom-prompt {
+    width: min(238px, calc(100vw - 34px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .constellation-lasso path,
+  .constellation-core,
+  .constellation-action,
+  .constellation-action--creating,
+  .constellation-custom-prompt {
+    animation: none;
+  }
+}

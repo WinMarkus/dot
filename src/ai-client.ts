@@ -1,4 +1,4 @@
-import type { Artifact, ArtifactKind, ArtifactPorts, ConnectedInput, GeneratedArtifact } from './types';
+import type { Artifact, ArtifactKind, ArtifactPorts, ConnectedInput, GeneratedArtifact, GroupAction } from './types';
 
 export type GenerateMode = 'create' | 'edit' | 'regenerate';
 
@@ -93,6 +93,42 @@ export async function suggestNextArtifacts(request: SuggestArtifactsRequest): Pr
 
   const payload = (await response.json()) as { suggestions?: ArtifactSuggestion[] };
   return Array.isArray(payload.suggestions) ? payload.suggestions.slice(0, 3) : [];
+}
+
+export type GroupActionArtifact = {
+  id: string;
+  kind: ArtifactKind;
+  title: string;
+  prompt: string;
+  purpose: string;
+  summary: string;
+  content: string;
+  ports: ArtifactPorts;
+};
+
+export type SuggestGroupActionsRequest = {
+  artifacts: GroupActionArtifact[];
+  canvasContext: {
+    artifacts: CanvasArtifactContext[];
+  };
+};
+
+export async function suggestGroupActions(request: SuggestGroupActionsRequest): Promise<GroupAction[]> {
+  const response = await fetch('/api/group-actions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `Group action suggestion failed with ${response.status}`);
+  }
+
+  const payload = (await response.json()) as { actions?: GroupAction[] };
+  return Array.isArray(payload.actions) ? payload.actions.slice(0, 4) : [];
 }
 
 export type GenerateImageResponse = {

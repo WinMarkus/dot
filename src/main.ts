@@ -20,6 +20,7 @@ import './ai-artifacts.css';
 import './nested-bubbles.css';
 import './model-picker.css';
 import './ghost-suggestions.css';
+import './constellation-actions.css';
 import './connections.css';
 import './theme-materials.css';
 import './canvas-persistence.css';

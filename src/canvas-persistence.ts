@@ -19,6 +19,7 @@ type DotSetupState = Record<string, unknown>;
 
 const SAVE_TOKEN_STORAGE_KEY = 'dot:save-token';
 const MAX_INLINE_IMAGE_URL_LENGTH = 12_000;
+const MAX_RUNTIME_VALUE_LENGTH = 64_000;
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value ?? null)) as T;
@@ -60,6 +61,24 @@ function sanitizeArtifactForSnapshot(artifact: Artifact): Artifact {
   }
 
   if (copy.content?.imageStatus === 'pending') delete copy.content.imageStatus;
+
+  if (copy.runtime) {
+    const compactRuntimeRecord = (record: Record<string, unknown>) =>
+      Object.fromEntries(
+        Object.entries(record).filter(([, value]) => {
+          try {
+            const encoded = JSON.stringify(value);
+            return encoded.length <= MAX_RUNTIME_VALUE_LENGTH && !encoded.includes('"data:');
+          } catch {
+            return false;
+          }
+        }),
+      );
+
+    copy.runtime.inputs = compactRuntimeRecord(copy.runtime.inputs);
+    copy.runtime.outputs = compactRuntimeRecord(copy.runtime.outputs);
+  }
+
   return copy;
 }
 

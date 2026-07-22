@@ -81,21 +81,48 @@ function createObjectArtifactContent(value: string): ArtifactContent {
 
 function createComponentArtifactContent(value: string): ArtifactContent {
   const title = makeArtifactTitle(value);
+  const encodedTitle = JSON.stringify(title).replace(/</g, '\\u003c');
   const vue = `<template>
   <div class="dot-demo">
-    <h3>${title}</h3>
-    <button @click="count += 1">click me</button>
-    <p>{{ count ? 'Clicked ' + count + ' times.' : 'Ready.' }}</p>
+    <span class="eyebrow">living counter</span>
+    <h3>{{ title }}</h3>
+    <button @click="increment">grow</button>
+    <p>{{ count ? 'Grown to ' + count + '.' : 'Ready to grow.' }}</p>
+    <small>seed · {{ seed }}</small>
   </div>
 </template>
 
 <script>
-const { ref } = Vue;
+const { computed, onMounted, reactive, ref, watch } = Vue;
+
+// Dot is injected by the canvas. These local defaults keep the component fully
+// usable in a standalone preview and in snapshots created before Dot existed.
+const fallbackInputs = reactive({ seed: 0 });
+const dot = globalThis.Dot ?? { inputs: fallbackInputs, emit: () => {} };
+const dotInputs = dot.inputs ?? fallbackInputs;
+const emitDot = typeof dot.emit === 'function' ? dot.emit.bind(dot) : () => {};
 
 export default {
   setup() {
-    const count = ref(0);
-    return { count };
+    const title = ${encodedTitle};
+    const seed = computed(() => {
+      const next = Number(dotInputs.seed);
+      return Number.isFinite(next) ? next : 0;
+    });
+    const count = ref(seed.value);
+
+    watch(seed, (next) => {
+      count.value = next;
+    });
+
+    function increment() {
+      count.value += 1;
+      emitDot('count', count.value);
+    }
+
+    onMounted(() => emitDot('count', count.value));
+
+    return { count, increment, seed, title };
   },
 };
 </script>
@@ -104,6 +131,7 @@ export default {
 .dot-demo { display: grid; gap: 12px; min-height: 150px; place-items: center; padding: 18px; color: #fffaf0; background: radial-gradient(circle at 30% 20%, rgba(142,255,135,.22), transparent 38%), #151711; border-radius: 20px; font-family: system-ui, sans-serif; }
 button { border: 0; border-radius: 999px; padding: 10px 14px; background: #ffbc75; color: #15110b; font-weight: 800; cursor: pointer; }
 p, h3 { margin: 0; }
+.eyebrow, small { color: rgba(255, 250, 240, .6); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
 </style>`;
 
   return {
@@ -111,12 +139,12 @@ p, h3 { margin: 0; }
     description: value,
     vue,
     tags: ['component', 'vue'],
-    connections: ['props', 'event', 'state'],
+    connections: ['seed', 'count', 'growth'],
     capabilities: ['render', 'interact', 'connect'],
-    summary: 'Sandboxed Vue component placeholder.',
+    summary: 'Sandboxed Vue component with a live seed input and count output.',
     ports: {
-      inputs: [{ id: 'props', label: 'props', type: 'data', purpose: 'Configuration for the component.' }],
-      outputs: [{ id: 'event', label: 'event', type: 'event', purpose: 'User interaction emitted by the component.' }],
+      inputs: [{ id: 'seed', label: 'seed', type: 'data', mode: 'state', purpose: 'Sets the counter to a connected numeric starting value.' }],
+      outputs: [{ id: 'count', label: 'count', type: 'data', mode: 'state', purpose: 'Emits the current count whenever the user grows it.' }],
     },
   };
 }
@@ -143,8 +171,8 @@ export function fakeGenerateArtifact(value: string, previous?: Artifact, preferr
         capabilities: ['summarise', 'rewrite', 'connect'],
         summary: 'Text artifact with markdown preview.',
         ports: {
-          inputs: [{ id: 'source', label: 'source', type: 'text', purpose: 'Source text or instructions.' }],
-          outputs: [{ id: 'text', label: 'text', type: 'text', purpose: 'Generated written output.' }],
+          inputs: [{ id: 'source', label: 'source', type: 'text', mode: 'resource', purpose: 'Source text or instructions.' }],
+          outputs: [{ id: 'text', label: 'text', type: 'text', mode: 'resource', purpose: 'Generated written output.' }],
         },
       },
     };
@@ -186,8 +214,8 @@ export function fakeGenerateArtifact(value: string, previous?: Artifact, preferr
         capabilities: ['describe', 'vary', 'connect'],
         summary: 'Image artifact placeholder.',
         ports: {
-          inputs: [{ id: 'style', label: 'style', type: 'text', purpose: 'Visual style or reference.' }],
-          outputs: [{ id: 'image', label: 'image', type: 'image', purpose: 'Generated image output.' }],
+          inputs: [{ id: 'style', label: 'style', type: 'text', mode: 'resource', purpose: 'Visual style or reference.' }],
+          outputs: [{ id: 'image', label: 'image', type: 'image', mode: 'resource', purpose: 'Generated image output.' }],
         },
       },
     };
@@ -208,8 +236,8 @@ export function fakeGenerateArtifact(value: string, previous?: Artifact, preferr
         storyboard: ['Opening frame', 'Main motion', 'End frame'],
         summary: 'Video artifact placeholder with storyboard beats.',
         ports: {
-          inputs: [{ id: 'script', label: 'script', type: 'text', purpose: 'Scene or script input.' }],
-          outputs: [{ id: 'video', label: 'video', type: 'video', purpose: 'Generated video output.' }],
+          inputs: [{ id: 'script', label: 'script', type: 'text', mode: 'resource', purpose: 'Scene or script input.' }],
+          outputs: [{ id: 'video', label: 'video', type: 'video', mode: 'resource', purpose: 'Generated video output.' }],
         },
       },
     };

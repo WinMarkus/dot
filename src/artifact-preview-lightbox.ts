@@ -1,21 +1,8 @@
-type ArtifactContent = {
-  text?: string;
-  markdown?: string;
-  summary?: string;
-  description?: string;
-  html?: string;
-  css?: string;
-  js?: string;
-  raw?: string;
-  data?: unknown;
-  ports?: unknown;
-  tags?: string[];
-  imageUrl?: string;
-  alt?: string;
-  storyboard?: string[];
-};
+import { createComponentSrcDoc } from './component-srcdoc';
+import type { ArtifactContent } from './types';
 
 type ArtifactLike = {
+  id?: string;
   kind?: string;
   title?: string;
   content?: ArtifactContent;
@@ -77,31 +64,6 @@ function prettyJson(value: unknown) {
 
 function readableText(content: ArtifactContent) {
   return content.markdown || content.text || content.summary || content.description || content.raw || '';
-}
-
-function componentSrcDoc(content: ArtifactContent) {
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<style>
-  html, body { margin: 0; min-height: 100%; background: transparent; color: #f6f1e8; font-family: Inter, system-ui, sans-serif; }
-  * { box-sizing: border-box; }
-  ${content.css || ''}
-</style>
-</head>
-<body>
-${content.html || '<main style="padding:24px">No component HTML available.</main>'}
-<script>
-try {
-${content.js || ''}
-} catch (error) {
-  document.body.insertAdjacentHTML('beforeend', '<pre style="color:#ffb4a8;padding:16px;white-space:pre-wrap">' + String(error) + '</pre>');
-}
-</script>
-</body>
-</html>`;
 }
 
 function ensureLightbox() {
@@ -181,7 +143,7 @@ function appendVideoPreview(body: HTMLElement, content: ArtifactContent) {
 
 function openArtifactPreview(artifact: ArtifactLike) {
   const parts = ensureLightbox();
-  const content = artifact.content ?? {};
+  const content = artifact.content ?? { raw: '' };
   const title = artifact.title || 'Artifact preview';
   parts.titleEl.textContent = title;
   parts.bodyEl.innerHTML = '';
@@ -191,7 +153,8 @@ function openArtifactPreview(artifact: ArtifactLike) {
     iframe.className = 'artifact-preview-lightbox__component-frame';
     iframe.title = title;
     iframe.sandbox.add('allow-scripts');
-    iframe.srcdoc = componentSrcDoc(content);
+    if (artifact.id) iframe.dataset.dotArtifactId = artifact.id;
+    iframe.srcdoc = createComponentSrcDoc(content);
     parts.bodyEl.appendChild(iframe);
   } else if (artifact.kind === 'object') {
     appendObjectPreview(parts.bodyEl, content);
@@ -216,6 +179,7 @@ function closeLightbox() {
 }
 
 function shouldIgnoreBubbleOpen(target: Element) {
+  if (document.querySelector('.workspace--weave-targeting')) return true;
   return Boolean(
     target.closest(
       '.artifact-action-system, .artifact-action-root, .artifact-action, .weave-halo, .nested-bubbles, .deleted-marker, .image-lightbox, .artifact-preview-lightbox, button, input, textarea, select',

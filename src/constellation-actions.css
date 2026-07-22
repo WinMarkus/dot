@@ -167,6 +167,39 @@
     rgba(var(--c-deep), 0.42);
 }
 
+.constellation-action--queued {
+  border-color: rgba(var(--c-spark), 0.72);
+  border-style: solid;
+  background:
+    radial-gradient(circle at 31% 24%, rgba(255, 255, 255, 0.18), transparent 23%),
+    radial-gradient(circle at 70% 72%, rgba(var(--c-spark), 0.2), transparent 48%),
+    rgba(var(--c-deep-warm), 0.62);
+  box-shadow:
+    0 0 0 5px rgba(var(--c-spark), 0.05),
+    0 24px 62px rgba(0, 0, 0, 0.34),
+    0 0 42px rgba(var(--c-spark), 0.2);
+}
+
+.constellation-action--queued small {
+  color: rgba(var(--c-spark), 0.84);
+}
+
+.constellation-action--weave {
+  border-color: rgba(var(--c-warm), 0.66);
+  border-style: solid;
+  background:
+    radial-gradient(circle at 31% 24%, rgba(255, 255, 255, 0.2), transparent 23%),
+    radial-gradient(circle at 70% 72%, rgba(var(--c-warm), 0.22), transparent 48%),
+    rgba(var(--c-deep-warm), 0.68);
+  box-shadow:
+    0 26px 66px rgba(0, 0, 0, 0.36),
+    0 0 48px rgba(var(--c-warm), 0.26);
+}
+
+.constellation-action--weave small {
+  color: rgba(var(--c-warm), 0.9);
+}
+
 .constellation-action--creating {
   border-color: rgba(var(--c-warm), 0.74);
   border-style: solid;

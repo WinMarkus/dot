@@ -11,7 +11,9 @@ import {
   getParentArtifact as getTreeParentArtifact,
 } from './artifact-tree';
 import { ARTIFACT_HEIGHT, ARTIFACT_WIDTH, DELETE_TRANSITION_MS, MIN_ZOOM } from './constants';
+import { DotComponentHost } from './component-host';
 import { createComponentSrcDoc } from './component-srcdoc';
+import { chooseConnectionBinding, connectionPortLabel, isDeclaredOutput, readArtifactOutput } from './connection-contract';
 import {
   centerCameraOn as createCenteredCamera,
   clamp,
@@ -22,7 +24,9 @@ import {
 } from './geometry';
 import { fetchModelCatalog, formatModelPrice, loadSavedModel, saveModel, shortModelName } from './model-picker';
 import type { ModelCatalog } from './model-picker';
-import type { Artifact, CameraState, DeletedMarker, DragState, GeneratedArtifact, GroupAction, Point, PromptMode, Viewport } from './types';
+import { isSerializableValue, LivingRuntime, livingPortKey } from './living-runtime';
+import type { LivingPacket, LivingRuntimeSnapshot, SerializableValue } from './living-runtime';
+import type { Artifact, ArtifactPortType, CameraState, DeletedMarker, DragState, GeneratedArtifact, GroupAction, Point, PromptMode, Viewport } from './types';
 
 const FORK_SPLIT_MS = 840;
 
@@ -138,6 +142,7 @@ const constellation = ref<Constellation | null>(null);
 const constellationActions = ref<GroupAction[]>([]);
 const constellationActionsLoading = ref(false);
 const creatingConstellationActionId = ref<string | null>(null);
+const queuedConstellationActionIds = ref<string[]>([]);
 const isCustomConstellationPromptOpen = ref(false);
 const customConstellationPrompt = ref('');
 const customConstellationPromptInput = ref<HTMLInputElement | null>(null);
@@ -260,20 +265,40 @@ function chooseArtifactPosition(seed: Point) {
   const viewport = getViewport();
   const margin = 28;
   const reservedBottom = 132;
-  const gap = 42;
-  const candidates: Point[] = [
-    { x: seed.x + gap, y: seed.y - ARTIFACT_HEIGHT * 0.25 },
-    { x: seed.x - ARTIFACT_WIDTH - gap, y: seed.y - ARTIFACT_HEIGHT * 0.25 },
-    { x: seed.x - ARTIFACT_WIDTH * 0.5, y: seed.y + gap },
-    { x: seed.x - ARTIFACT_WIDTH * 0.5, y: seed.y - ARTIFACT_HEIGHT - gap },
-  ];
+  const newArtifactSize = { w: 430, h: Math.max(285, ARTIFACT_HEIGHT) };
+  const goldenAngle = (137.508 * Math.PI) / 180;
+  const candidates = Array.from({ length: 30 }, (_, index) => {
+    const ring = Math.floor(index / 6);
+    const radius = 210 + ring * 104;
+    const angle = (16 * Math.PI) / 180 + index * goldenAngle;
+    return {
+      x: seed.x + Math.cos(angle) * radius - newArtifactSize.w / 2,
+      y: seed.y + Math.sin(angle) * radius - newArtifactSize.h / 2,
+    };
+  });
+
+  const overlapsExistingBubble = (candidate: Point) => {
+    const padding = 30;
+    return topLevelArtifacts.value.some((artifact) => {
+      // Placement plans for the steady state: the previous selection folds
+      // back into its resting bubble when the new growth becomes selected.
+      const size = closedArtifactSize(artifact);
+      return !(
+        candidate.x + newArtifactSize.w + padding <= artifact.x ||
+        candidate.x >= artifact.x + size.w + padding ||
+        candidate.y + newArtifactSize.h + padding <= artifact.y ||
+        candidate.y >= artifact.y + size.h + padding
+      );
+    });
+  };
 
   const fittingCandidate = candidates.find((candidate) => {
     const screen = worldToScreen(candidate);
-    const width = ARTIFACT_WIDTH * camera.value.zoom;
-    const height = ARTIFACT_HEIGHT * camera.value.zoom;
+    const width = newArtifactSize.w * camera.value.zoom;
+    const height = newArtifactSize.h * camera.value.zoom;
 
     return (
+      !overlapsExistingBubble(candidate) &&
       screen.x >= margin &&
       screen.y >= margin &&
       screen.x + width <= viewport.width - margin &&
@@ -281,7 +306,11 @@ function chooseArtifactPosition(seed: Point) {
     );
   });
 
-  return fittingCandidate ?? getViewportSafeWorldPoint({ x: margin, y: margin + 24 }, camera.value, viewport);
+  return (
+    fittingCandidate ??
+    candidates.find((candidate) => !overlapsExistingBubble(candidate)) ??
+    getViewportSafeWorldPoint({ x: margin, y: margin + 24 }, camera.value, viewport)
+  );
 }
 
 function activatePrompt() {
@@ -297,6 +326,7 @@ function resetPromptMode() {
 
 function closeTransientUi() {
   dismissConstellation();
+  clearQueuedSuggestions();
   selectedArtifactId.value = null;
   activeActionArtifactId.value = null;
   inspectedArtifactId.value = null;
@@ -419,7 +449,314 @@ function findLiveArtifact(artifactId: string) {
 const connections = ref<ArtifactConnection[]>([]);
 const staleArtifactIds = ref<string[]>([]);
 const pulsingConnectionIds = ref<string[]>([]);
+const componentRuntimeErrors = ref<Record<string, string>>({});
 const connectDragState = ref<{ pointerId: number; fromId: string; toWorld: Point; hoverTargetId: string | null } | null>(null);
+const weaveSourceId = ref<string | null>(null);
+const connectionPulseTimers = new Map<string, number>();
+let componentHost: DotComponentHost | null = null;
+let suppressNextAuraClick = false;
+
+function ensureArtifactRuntime(artifact: Artifact) {
+  if (!artifact.runtime) artifact.runtime = { inputs: {}, outputs: {}, revision: 0 };
+  return artifact.runtime;
+}
+
+function componentInputSnapshot(artifactId: string) {
+  const artifact = findLiveArtifact(artifactId);
+  const runtime = artifact ? ensureArtifactRuntime(artifact) : null;
+  return { inputs: runtime?.inputs ?? {}, revision: runtime?.revision ?? 0 };
+}
+
+function setComponentRuntimeError(artifactId: string, message?: string) {
+  const next = { ...componentRuntimeErrors.value };
+  if (message) next[artifactId] = message;
+  else delete next[artifactId];
+  componentRuntimeErrors.value = next;
+}
+
+function artifactRuntimeIssue(artifactId: string) {
+  return componentRuntimeErrors.value[artifactId] ?? connections.value.find((connection) => connection.toId === artifactId && connection.error)?.error;
+}
+
+const livingRuntime = new LivingRuntime({
+  onError: ({ error, connectionId }) => {
+    console.warn('[dot:living-runtime]', connectionId ?? 'runtime', error);
+  },
+});
+
+type RuntimePortRegistration = {
+  signature: string;
+  dispose: () => void;
+};
+
+type RuntimeConnectionRegistration = {
+  signature: string;
+  toArtifactId: string;
+  toPortId: string;
+};
+
+const runtimePortRegistrations = new Map<string, RuntimePortRegistration>();
+const runtimeConnectionRegistrations = new Map<string, RuntimeConnectionRegistration>();
+const mirroredConnectionRevisions = new Map<string, number>();
+
+function runtimePortAddress(artifactId: string, portId: string, direction: 'input' | 'output') {
+  return { artifactId, portId: `${direction}:${portId}` };
+}
+
+function cloneSerializable(value: unknown): SerializableValue | undefined {
+  try {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) return undefined;
+    const clone = JSON.parse(encoded) as unknown;
+    return isSerializableValue(clone) ? clone : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function receiveLivingInput(artifactId: string, portId: string, packet: LivingPacket) {
+  const artifact = findLiveArtifact(artifactId);
+  if (!artifact) return;
+
+  const runtime = ensureArtifactRuntime(artifact);
+  runtime.inputs = { ...runtime.inputs, [portId]: structuredClone(packet.value) };
+  runtime.revision += 1;
+  runtime.updatedAt = new Date(packet.deliveredAt ?? Date.now()).toISOString();
+  componentHost?.sendInputs(artifactId, runtime.inputs, runtime.revision);
+}
+
+function clearUnboundInput(artifactId: string, portId: string) {
+  const stillBound = connections.value.some(
+    (connection) => connection.toId === artifactId && connection.toPortId === portId && connection.fromPortId,
+  );
+  if (stillBound) return;
+
+  const artifact = findLiveArtifact(artifactId);
+  if (!artifact?.runtime || !Object.prototype.hasOwnProperty.call(artifact.runtime.inputs, portId)) return;
+  const { [portId]: _removed, ...remaining } = artifact.runtime.inputs;
+  artifact.runtime.inputs = remaining;
+  artifact.runtime.revision += 1;
+  componentHost?.sendInputs(artifactId, remaining, artifact.runtime.revision);
+}
+
+function syncLivingRuntime() {
+  // Saved canvases and future import paths may bypass createConnection(). Keep
+  // the executable graph acyclic here too: one edge in every automatic
+  // feedback loop becomes a deliberate, user-released breathe boundary.
+  for (const connection of connections.value) {
+    if ((connection.policy ?? 'breathe') === 'breathe') continue;
+    if (!wouldCloseAutomaticConnectionCycle(connection.fromId, connection.toId)) continue;
+    connection.policy = 'breathe';
+    markStale(connection.toId);
+  }
+
+  const desiredPorts = new Map<
+    string,
+    { artifactId: string; portId: string; direction: 'input' | 'output'; type: ArtifactPortType; signature: string }
+  >();
+
+  for (const artifact of artifacts.value) {
+    for (const direction of ['input', 'output'] as const) {
+      const ports = direction === 'input' ? artifact.content.ports?.inputs ?? [] : artifact.content.ports?.outputs ?? [];
+      for (const port of ports) {
+        const address = runtimePortAddress(artifact.id, port.id, direction);
+        const key = livingPortKey(address);
+        desiredPorts.set(key, {
+          artifactId: artifact.id,
+          portId: port.id,
+          direction,
+          type: port.type,
+          signature: `${direction}:${port.type}:${port.mode ?? 'state'}`,
+        });
+      }
+    }
+  }
+
+  const newlyConnected: ArtifactConnection[] = [];
+  livingRuntime.batch(() => {
+    for (const [key, registration] of runtimePortRegistrations) {
+      const desired = desiredPorts.get(key);
+      if (desired?.signature === registration.signature) continue;
+      registration.dispose();
+      runtimePortRegistrations.delete(key);
+    }
+
+    for (const [key, desired] of desiredPorts) {
+      if (runtimePortRegistrations.has(key)) continue;
+      const address = runtimePortAddress(desired.artifactId, desired.portId, desired.direction);
+      const disposePort = livingRuntime.registerPort({ ...address, direction: desired.direction, type: desired.type });
+      const disposeInput =
+        desired.direction === 'input'
+          ? livingRuntime.subscribeInput(address, (packet) => receiveLivingInput(desired.artifactId, desired.portId, packet))
+          : () => {};
+      runtimePortRegistrations.set(key, {
+        signature: desired.signature,
+        dispose: () => {
+          disposeInput();
+          disposePort();
+        },
+      });
+    }
+
+    const desiredConnectionIds = new Set(
+      connections.value
+        .filter((connection) => connection.fromPortId && connection.toPortId)
+        .map((connection) => connection.id),
+    );
+
+    for (const [id, registration] of runtimeConnectionRegistrations) {
+      if (desiredConnectionIds.has(id)) continue;
+      livingRuntime.disconnect(id);
+      runtimeConnectionRegistrations.delete(id);
+      mirroredConnectionRevisions.delete(id);
+      clearUnboundInput(registration.toArtifactId, registration.toPortId);
+    }
+
+    for (const connection of connections.value) {
+      if (!connection.fromPortId || !connection.toPortId) continue;
+      const signature = [
+        connection.fromId,
+        connection.fromPortId,
+        connection.toId,
+        connection.toPortId,
+        connection.policy ?? 'breathe',
+      ].join(':');
+      const existing = runtimeConnectionRegistrations.get(connection.id);
+      if (existing?.signature === signature) {
+        const runtimeConnection = livingRuntime.getConnection(connection.id);
+        if (runtimeConnection && runtimeConnection.meaning !== connection.meaning) {
+          livingRuntime.updateConnection(connection.id, { meaning: connection.meaning });
+        }
+        continue;
+      }
+      if (existing) {
+        livingRuntime.disconnect(connection.id);
+        clearUnboundInput(existing.toArtifactId, existing.toPortId);
+      }
+
+      livingRuntime.connect({
+        id: connection.id,
+        from: runtimePortAddress(connection.fromId, connection.fromPortId, 'output'),
+        to: runtimePortAddress(connection.toId, connection.toPortId, 'input'),
+        meaning: connection.meaning,
+        policy: connection.policy ?? 'breathe',
+      });
+      runtimeConnectionRegistrations.set(connection.id, {
+        signature,
+        toArtifactId: connection.toId,
+        toPortId: connection.toPortId,
+      });
+      newlyConnected.push(connection);
+    }
+  });
+
+  newlyConnected.forEach(publishConnectionSource);
+}
+
+function pulseLivingConnection(connectionId: string, duration = 1150) {
+  if (!pulsingConnectionIds.value.includes(connectionId)) {
+    pulsingConnectionIds.value = [...pulsingConnectionIds.value, connectionId];
+  }
+  const previous = connectionPulseTimers.get(connectionId);
+  if (previous) window.clearTimeout(previous);
+  connectionPulseTimers.set(
+    connectionId,
+    window.setTimeout(() => {
+      pulsingConnectionIds.value = pulsingConnectionIds.value.filter((id) => id !== connectionId);
+      connectionPulseTimers.delete(connectionId);
+    }, duration),
+  );
+}
+
+function mirrorLivingRuntime(snapshot: LivingRuntimeSnapshot) {
+  for (const state of snapshot.connections) {
+    const connection = connections.value.find((candidate) => candidate.id === state.id);
+    if (!connection) continue;
+
+    const previousRevision = mirroredConnectionRevisions.get(state.id) ?? 0;
+    connection.status = state.status;
+    connection.revision = state.revision;
+    connection.error = state.blockedReason?.message;
+    if (state.lastPacket?.deliveredAt) connection.lastFlowAt = new Date(state.lastPacket.deliveredAt).toISOString();
+    if (state.revision > previousRevision) pulseLivingConnection(state.id);
+    if (state.hasPending && state.policy === 'breathe') markStale(connection.toId);
+    mirroredConnectionRevisions.set(state.id, state.revision);
+  }
+}
+
+function publishArtifactOutput(artifact: Artifact, portId: string, value = readArtifactOutput(artifact, portId)) {
+  const serializable = cloneSerializable(value);
+  if (serializable === undefined) return;
+  if (!livingRuntime.getPort(runtimePortAddress(artifact.id, portId, 'output'))) syncLivingRuntime();
+
+  try {
+    const packet = livingRuntime.emit(runtimePortAddress(artifact.id, portId, 'output'), serializable, {
+      metadata: { artifactId: artifact.id, title: artifact.title },
+    });
+    const runtime = ensureArtifactRuntime(artifact);
+    runtime.outputs = { ...runtime.outputs, [portId]: serializable };
+    runtime.revision = Math.max(runtime.revision + 1, packet.revision);
+    runtime.updatedAt = new Date(packet.emittedAt).toISOString();
+    setComponentRuntimeError(artifact.id);
+  } catch (error) {
+    setComponentRuntimeError(artifact.id, error instanceof Error ? error.message : 'Could not emit this value.');
+  }
+}
+
+function publishConnectionSource(connection: ArtifactConnection) {
+  if (!connection.fromPortId) return;
+  const artifact = findLiveArtifact(connection.fromId);
+  const port = artifact?.content.ports?.outputs.find((candidate) => candidate.id === connection.fromPortId);
+  if (!artifact || !port || port.mode === 'event' || port.type === 'event') return;
+  if (artifact.kind === 'component' && artifact.runtime?.outputs[port.id] === undefined) return;
+  publishArtifactOutput(artifact, port.id);
+}
+
+function publishArtifactOutputs(artifact: Artifact) {
+  for (const port of artifact.content.ports?.outputs ?? []) {
+    if (port.mode === 'event') continue;
+    publishArtifactOutput(artifact, port.id);
+  }
+}
+
+function handleComponentEmit(artifactId: string, portId: string, value: unknown) {
+  const artifact = findLiveArtifact(artifactId);
+  if (!artifact) return;
+  if (!isDeclaredOutput(artifact, portId)) {
+    setComponentRuntimeError(artifactId, `The component emitted undeclared output “${portId}”.`);
+    return;
+  }
+
+  const serializable = cloneSerializable(value);
+  if (serializable === undefined || JSON.stringify(serializable).length > 256_000) {
+    setComponentRuntimeError(artifactId, `Output “${portId}” must be a compact JSON-serializable value.`);
+    return;
+  }
+  publishArtifactOutput(artifact, portId, serializable);
+}
+
+const stopLivingRuntimeSubscription = livingRuntime.subscribe(mirrorLivingRuntime);
+
+const livingTopologySignature = computed(() =>
+  JSON.stringify({
+    artifacts: artifacts.value.map((artifact) => ({
+      id: artifact.id,
+      inputs: artifact.content.ports?.inputs.map((port) => [port.id, port.type, port.mode]) ?? [],
+      outputs: artifact.content.ports?.outputs.map((port) => [port.id, port.type, port.mode]) ?? [],
+    })),
+    connections: connections.value.map((connection) => [
+      connection.id,
+      connection.fromId,
+      connection.fromPortId,
+      connection.toId,
+      connection.toPortId,
+      connection.policy,
+      connection.meaning,
+    ]),
+  }),
+);
+
+watch(livingTopologySignature, syncLivingRuntime, { immediate: true });
 
 type ArtifactSize = { w: number; h: number };
 type ArtifactMeasurement = {
@@ -635,9 +972,17 @@ const renderedConnections = computed(() =>
   }),
 );
 
-// Only spin the animation clock while there is something alive to animate.
+function connectionBindingLabel(connection: ArtifactConnection) {
+  const from = findLiveArtifact(connection.fromId);
+  const to = findLiveArtifact(connection.toId);
+  if (!from || !to || !connection.fromPortId || !connection.toPortId) return 'generative context · breathe';
+  return `${connectionPortLabel(from, connection.fromPortId)} → ${connectionPortLabel(to, connection.toPortId)} · ${connection.policy ?? 'breathe'}`;
+}
+
+// Motion is evidence: dormant relationships rest instead of burning a frame
+// loop just to look alive. A drag or an actual value pulse wakes the organism.
 watch(
-  () => connections.value.length > 0 || Boolean(connectDragState.value),
+  () => pulsingConnectionIds.value.length > 0 || Boolean(connectDragState.value),
   (alive) => {
     if (alive && !tendrilRaf) {
       tendrilRaf = requestAnimationFrame(animateTendrils);
@@ -678,6 +1023,14 @@ const lassoCandidateArtifactIds = computed(() => {
     .map((artifact) => artifact.id);
 });
 
+const queuedConstellationActions = computed(() =>
+  constellationActions.value.filter((action) => queuedConstellationActionIds.value.includes(action.id)),
+);
+
+const constellationOrbitCount = computed(
+  () => constellationActions.value.length + 1 + (queuedConstellationActions.value.length ? 1 : 0),
+);
+
 const selectedHaloBounds = computed(() => {
   const artifact = selectedTopLevelArtifact.value;
   if (!artifact) return null;
@@ -695,9 +1048,17 @@ const liveTendrilPath = computed(() => {
   return tendrilGeometry(tendrilAnchor(from, state.toWorld), state.toWorld, state.fromId, tendrilPhase.value).path;
 });
 
-function artifactContentSnippet(artifact: Artifact) {
-  const content = artifact.content;
-  return (content.text || content.markdown || content.imagePrompt || content.description || content.raw || '').slice(0, 600);
+function connectedValueSnippet(value: unknown) {
+  if (typeof value === 'string') return value.slice(0, 600);
+  try {
+    return JSON.stringify(value).slice(0, 600);
+  } catch {
+    return String(value).slice(0, 600);
+  }
+}
+
+function artifactContentSnippet(artifact: Artifact, portId?: string) {
+  return connectedValueSnippet(readArtifactOutput(artifact, portId));
 }
 
 function buildConnectedInputs(artifactId: string): ConnectedInput[] {
@@ -707,13 +1068,20 @@ function buildConnectedInputs(artifactId: string): ConnectedInput[] {
     .flatMap((connection) => {
       const from = findLiveArtifact(connection.fromId);
       if (!from) return [];
-      return [{ meaning: connection.meaning, kind: from.kind, title: from.title, content: artifactContentSnippet(from) }];
+      return [
+        {
+          meaning: connection.meaning,
+          kind: from.kind,
+          title: from.title,
+          content: artifactContentSnippet(from, connection.fromPortId),
+        },
+      ];
     });
 }
 
 function markDownstreamStale(changedId: string) {
   const downstream = connections.value
-    .filter((connection) => connection.fromId === changedId)
+    .filter((connection) => connection.fromId === changedId && (connection.policy ?? 'breathe') === 'breathe')
     .map((connection) => connection.toId)
     .filter((id) => id !== changedId && !staleArtifactIds.value.includes(id) && findLiveArtifact(id));
 
@@ -728,6 +1096,33 @@ function clearStale(artifactId: string) {
   staleArtifactIds.value = staleArtifactIds.value.filter((id) => id !== artifactId);
 }
 
+function wouldCloseAutomaticConnectionCycle(fromId: string, toId: string) {
+  const visited = new Set<string>();
+  const frontier = [toId];
+
+  while (frontier.length) {
+    const current = frontier.pop();
+    if (!current || visited.has(current)) continue;
+    if (current === fromId) return true;
+    visited.add(current);
+
+    for (const connection of connections.value) {
+      if (connection.fromId === current && (connection.policy ?? 'breathe') !== 'breathe') {
+        frontier.push(connection.toId);
+      }
+    }
+  }
+
+  return false;
+}
+
+function forgetConnectionVisualState(connectionId: string) {
+  const timer = connectionPulseTimers.get(connectionId);
+  if (timer) window.clearTimeout(timer);
+  connectionPulseTimers.delete(connectionId);
+  pulsingConnectionIds.value = pulsingConnectionIds.value.filter((id) => id !== connectionId);
+}
+
 async function createConnection(fromId: string, toId: string, meaning?: string) {
   if (fromId === toId) return;
   if (connections.value.some((connection) => connection.fromId === fromId && connection.toId === toId)) return;
@@ -735,18 +1130,45 @@ async function createConnection(fromId: string, toId: string, meaning?: string) 
   const from = findLiveArtifact(fromId);
   const to = findLiveArtifact(toId);
   if (!from || !to) return;
+  const binding = chooseConnectionBinding(from, to);
+  const policy =
+    binding.policy !== 'breathe' && wouldCloseAutomaticConnectionCycle(fromId, toId)
+      ? 'breathe'
+      : binding.policy;
+
+  // Inputs represent one current value. A new weave to an occupied input
+  // deliberately grafts over the older binding instead of leaving ambiguous,
+  // order-dependent state behind.
+  if (binding.toPort) {
+    const displaced = connections.value.filter(
+      (connection) => connection.toId === toId && connection.toPortId === binding.toPort?.id,
+    );
+    if (displaced.length) {
+      const displacedIds = new Set(displaced.map((connection) => connection.id));
+      connections.value = connections.value.filter((connection) => !displacedIds.has(connection.id));
+      displaced.forEach((connection) => forgetConnectionVisualState(connection.id));
+      syncLivingRuntime();
+    }
+  }
 
   const connection: ArtifactConnection = {
     id: crypto.randomUUID(),
     fromId,
     toId,
+    fromPortId: binding.fromPort?.id,
+    toPortId: binding.toPort?.id,
+    policy,
+    status: 'resting',
+    revision: 0,
     meaning: meaning?.toLowerCase().slice(0, 60).trim() || 'weaving…',
     createdAt: nowLabel(),
   };
   connections.value.push(connection);
 
-  // A new inflow is a reason for the receiving bubble to breathe.
-  markStale(toId);
+  // Deterministic components absorb compatible values immediately. Expensive
+  // or generative receivers keep the existing invitation-to-breathe rhythm.
+  if (policy === 'breathe') markStale(toId);
+  syncLivingRuntime();
 
   if (!meaning) {
     const compact = (artifact: Artifact) => ({
@@ -769,6 +1191,8 @@ async function createConnection(fromId: string, toId: string, meaning?: string) 
 
 function removeConnection(connectionId: string) {
   connections.value = connections.value.filter((connection) => connection.id !== connectionId);
+  forgetConnectionVisualState(connectionId);
+  syncLivingRuntime();
 }
 
 function findArtifactAtWorldPoint(point: Point, excludeId?: string) {
@@ -793,6 +1217,21 @@ function handleAuraPointerDown(event: PointerEvent, artifact: Artifact) {
   };
 }
 
+function handleAuraClick(artifact: Artifact) {
+  if (suppressNextAuraClick) {
+    suppressNextAuraClick = false;
+    return;
+  }
+  weaveSourceId.value = weaveSourceId.value === artifact.id ? null : artifact.id;
+}
+
+function handleAuraKeydown(event: KeyboardEvent, artifact: Artifact) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  event.stopPropagation();
+  handleAuraClick(artifact);
+}
+
 function handleAuraPointerMove(event: PointerEvent) {
   const state = connectDragState.value;
   if (!state || state.pointerId !== event.pointerId) return;
@@ -806,27 +1245,40 @@ function handleAuraPointerUp(event: PointerEvent) {
   if (!state || state.pointerId !== event.pointerId) return;
 
   connectDragState.value = null;
-  if (state.hoverTargetId) void createConnection(state.fromId, state.hoverTargetId);
+  if (state.hoverTargetId) {
+    suppressNextAuraClick = true;
+    weaveSourceId.value = null;
+    void createConnection(state.fromId, state.hoverTargetId);
+  }
 }
 
 async function breatheArtifact(artifact: Artifact) {
   if (isGenerating.value || regeneratingArtifactId.value) return;
 
-  pulsingConnectionIds.value = connections.value
+  const incomingConnectionIds = connections.value
     .filter((connection) => connection.toId === artifact.id)
     .map((connection) => connection.id);
+  pulsingConnectionIds.value = [...new Set([...pulsingConnectionIds.value, ...incomingConnectionIds])];
+  for (const connectionId of incomingConnectionIds) {
+    const timer = connectionPulseTimers.get(connectionId);
+    if (timer) window.clearTimeout(timer);
+    connectionPulseTimers.delete(connectionId);
+    if (livingRuntime.getConnection(connectionId)?.hasPending) livingRuntime.breathe(connectionId);
+  }
+  await Promise.resolve();
   clearStale(artifact.id);
 
   try {
     await regenerateArtifact(artifact);
   } finally {
-    pulsingConnectionIds.value = [];
+    pulsingConnectionIds.value = pulsingConnectionIds.value.filter((id) => !incomingConnectionIds.includes(id));
   }
 }
 
 const suggestionCache = ref<Record<string, ArtifactSuggestion[]>>({});
 const suggestionsLoadingId = ref<string | null>(null);
 const creatingSuggestionKey = ref<string | null>(null);
+const queuedSuggestionKeys = ref<string[]>([]);
 let suggestionTimer: number | null = null;
 let suggestionRequestToken = 0;
 
@@ -849,6 +1301,33 @@ const activeSuggestions = computed(() => {
   if (!artifact) return [];
   return suggestionCache.value[artifact.id] ?? [];
 });
+
+function suggestionKey(sourceId: string, suggestion: ArtifactSuggestion) {
+  return `${sourceId}:${suggestion.kind}:${suggestion.title}`;
+}
+
+const queuedSuggestions = computed(() => {
+  const source = activeSuggestionArtifact.value;
+  if (!source) return [];
+  return activeSuggestions.value
+    .map((suggestion, index) => ({ suggestion, index, key: suggestionKey(source.id, suggestion) }))
+    .filter((item) => queuedSuggestionKeys.value.includes(item.key));
+});
+
+function clearQueuedSuggestions() {
+  queuedSuggestionKeys.value = [];
+}
+
+function toggleSuggestionQueue(suggestion: ArtifactSuggestion) {
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+  const source = activeSuggestionArtifact.value;
+  if (!source) return;
+
+  const key = suggestionKey(source.id, suggestion);
+  queuedSuggestionKeys.value = queuedSuggestionKeys.value.includes(key)
+    ? queuedSuggestionKeys.value.filter((candidate) => candidate !== key)
+    : [...queuedSuggestionKeys.value, key];
+}
 
 function scheduleSuggestions(artifactId: string) {
   if (suggestionTimer) window.clearTimeout(suggestionTimer);
@@ -1044,6 +1523,7 @@ function dismissConstellation() {
   constellationActionRequestToken += 1;
   constellation.value = null;
   constellationActions.value = [];
+  queuedConstellationActionIds.value = [];
   constellationActionsLoading.value = false;
   isCustomConstellationPromptOpen.value = false;
   customConstellationPrompt.value = '';
@@ -1123,6 +1603,54 @@ function constellationResultPosition(action: GroupAction) {
   return { x: point.x - ARTIFACT_WIDTH / 2, y: point.y - ARTIFACT_HEIGHT / 2 };
 }
 
+function toggleConstellationActionQueue(action: GroupAction) {
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+  queuedConstellationActionIds.value = queuedConstellationActionIds.value.includes(action.id)
+    ? queuedConstellationActionIds.value.filter((id) => id !== action.id)
+    : [...queuedConstellationActionIds.value, action.id];
+}
+
+async function executeQueuedConstellationActions() {
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+  const actions = queuedConstellationActions.value;
+  const sources = constellationSources();
+  if (!actions.length || sources.length < 2) return;
+
+  creatingConstellationActionId.value = 'batch';
+  isGenerating.value = true;
+
+  try {
+    const batches = await Promise.all(
+      actions.map(async (action) => {
+        const generated = await requestGeneratedArtifacts(
+          action.prompt,
+          'create',
+          undefined,
+          action.kind,
+          constellationConnectedInputs(sources, action),
+        );
+        return { action, generated, position: constellationResultPosition(action) };
+      }),
+    );
+
+    const created = batches.flatMap(({ action, generated, position }) => {
+      const results = placeGeneratedArtifacts(generated, action.prompt, position);
+      const meaning = action.reason.toLowerCase().replace(/\.$/, '').slice(0, 60);
+      results.forEach((result) => {
+        sources.forEach((source) => void createConnection(source.id, result.id, meaning));
+        clearStale(result.id);
+      });
+      return results;
+    });
+
+    dismissConstellation();
+    selectedArtifactId.value = created[0]?.id ?? null;
+  } finally {
+    isGenerating.value = false;
+    creatingConstellationActionId.value = null;
+  }
+}
+
 async function executeConstellationAction(action: GroupAction, customPrompt?: string) {
   if (isGenerating.value || regeneratingArtifactId.value) return;
   const sources = constellationSources();
@@ -1163,6 +1691,7 @@ async function executeConstellationAction(action: GroupAction, customPrompt?: st
 
 function openCustomConstellationPrompt() {
   if (!activeConstellation.value || isGenerating.value) return;
+  queuedConstellationActionIds.value = [];
   isCustomConstellationPromptOpen.value = true;
   customConstellationPrompt.value = '';
   nextTick(() => customConstellationPromptInput.value?.focus());
@@ -1235,29 +1764,48 @@ function ghostSuggestionPosition(artifact: Artifact, index: number, total: numbe
   };
 }
 
-async function createFromSuggestion(suggestion: ArtifactSuggestion, index: number) {
+function ghostWeavePosition(artifact: Artifact) {
+  const center = artifactCenter(artifact);
+  const radius = Math.max(artifactRenderedBounds(artifact).w, artifactRenderedBounds(artifact).h) / 2 + 158;
+  return { x: center.x - radius, y: center.y };
+}
+
+async function executeQueuedSuggestions() {
   if (isGenerating.value || regeneratingArtifactId.value) return;
 
   const source = activeSuggestionArtifact.value;
-  if (!source) return;
+  const queued = queuedSuggestions.value;
+  if (!source || !queued.length) return;
 
-  const position = ghostSuggestionPosition(source, index, activeSuggestions.value.length);
-  creatingSuggestionKey.value = `${source.id}:${index}`;
+  creatingSuggestionKey.value = `${source.id}:batch`;
   isGenerating.value = true;
 
   try {
-    const meaning = suggestion.reason.toLowerCase().replace(/\.$/, '').slice(0, 60);
-    const generated = await requestGeneratedArtifacts(suggestion.prompt, 'create', undefined, suggestion.kind, [
-      { meaning, kind: source.kind, title: source.title, content: artifactContentSnippet(source) },
-    ]);
-    const created = placeGeneratedArtifacts(generated, suggestion.prompt, {
-      x: position.x - ARTIFACT_WIDTH / 2,
-      y: position.y - 60,
+    const batches = await Promise.all(
+      queued.map(async ({ suggestion, index }) => {
+        const position = ghostSuggestionPosition(source, index, activeSuggestions.value.length);
+        const generated = await requestGeneratedArtifacts(suggestion.prompt, 'create', undefined, suggestion.kind, [
+          { meaning: suggestion.reason.toLowerCase().replace(/\.$/, '').slice(0, 60), kind: source.kind, title: source.title, content: artifactContentSnippet(source) },
+        ]);
+        return { suggestion, generated, position };
+      }),
+    );
+
+    const created = batches.flatMap(({ suggestion, generated, position }) => {
+      const results = placeGeneratedArtifacts(generated, suggestion.prompt, {
+        x: position.x - ARTIFACT_WIDTH / 2,
+        y: position.y - 60,
+      });
+      const meaning = suggestion.reason.toLowerCase().replace(/\.$/, '').slice(0, 60);
+      results.forEach((result) => {
+        void createConnection(source.id, result.id, meaning);
+        clearStale(result.id);
+      });
+      return results;
     });
 
-    // Consume the used suggestion; when the last one is taken, the cache entry
-    // dissolves so fresh suggestions sprout the next time this bubble is selected.
-    const remaining = (suggestionCache.value[source.id] ?? []).filter((item) => item !== suggestion);
+    const queuedKeys = new Set(queued.map(({ key }) => key));
+    const remaining = (suggestionCache.value[source.id] ?? []).filter((item) => !queuedKeys.has(suggestionKey(source.id, item)));
     if (remaining.length) {
       suggestionCache.value = { ...suggestionCache.value, [source.id]: remaining };
     } else {
@@ -1265,12 +1813,7 @@ async function createFromSuggestion(suggestion: ArtifactSuggestion, index: numbe
       suggestionCache.value = rest;
     }
 
-    // A hatched ghost arrives already woven to its source.
-    if (created[0]) {
-      void createConnection(source.id, created[0].id, meaning);
-      clearStale(created[0].id);
-    }
-
+    clearQueuedSuggestions();
     selectedArtifactId.value = created[0]?.id ?? null;
     activeActionArtifactId.value = null;
   } finally {
@@ -1280,6 +1823,7 @@ async function createFromSuggestion(suggestion: ArtifactSuggestion, index: numbe
 }
 
 watch(selectedArtifactId, (id) => {
+  clearQueuedSuggestions();
   if (id) scheduleSuggestions(id);
   void nextTick(syncSelectedArtifactMeasurement);
 });
@@ -1303,6 +1847,7 @@ async function hydrateImageArtifact(artifactId: string) {
     live.content.imageUrl = result.image;
     live.content.imageStatus = 'ready';
     if (result.model) live.content.model = result.model;
+    publishArtifactOutputs(live);
   } catch (error) {
     console.warn('Image generation failed.', error);
     const live = findLiveArtifact(artifactId);
@@ -1342,13 +1887,47 @@ function placeGeneratedArtifacts(generatedArtifacts: GeneratedArtifact[], nextPr
   );
 }
 
+function evolveArtifactConnections(artifactId: string) {
+  for (const connection of connections.value) {
+    if (connection.fromId !== artifactId && connection.toId !== artifactId) continue;
+    const from = findLiveArtifact(connection.fromId);
+    const to = findLiveArtifact(connection.toId);
+    if (!from || !to) continue;
+
+    // Regeneration may rename or reshape a component's ports. Re-graft the
+    // relationship onto the best compatible pair so an evolving artifact does
+    // not silently leave dead endpoint ids behind.
+    const binding = chooseConnectionBinding(from, to);
+    connection.fromPortId = binding.fromPort?.id;
+    connection.toPortId = binding.toPort?.id;
+    connection.policy =
+      binding.policy !== 'breathe' && wouldCloseAutomaticConnectionCycle(connection.fromId, connection.toId)
+        ? 'breathe'
+        : binding.policy;
+    connection.status = 'resting';
+    connection.error = undefined;
+    if (connection.policy === 'breathe') markStale(connection.toId);
+  }
+}
+
 function applyGeneratedArtifact(target: Artifact, generated: GeneratedArtifact, nextPrompt: string) {
   const mapped = createArtifactFromGenerated(generated, nextPrompt, { x: target.x, y: target.y }, target.parentId);
+  const previousRuntime = ensureArtifactRuntime(target);
+  const nextInputIds = new Set(mapped.content.ports?.inputs.map((port) => port.id) ?? []);
 
   target.kind = mapped.kind;
   target.title = mapped.title;
   target.prompt = nextPrompt;
   target.content = mapped.content;
+  target.runtime = {
+    inputs: Object.fromEntries(Object.entries(previousRuntime.inputs).filter(([portId]) => nextInputIds.has(portId))),
+    outputs: {},
+    revision: previousRuntime.revision + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  evolveArtifactConnections(target.id);
+  syncLivingRuntime();
+  if (target.kind !== 'component') publishArtifactOutputs(target);
   void hydrateImageArtifact(target.id);
 
   // The change flows outward: connected downstream bubbles may want to breathe.
@@ -1517,6 +2096,16 @@ function handleDotPointerUp(event: PointerEvent) {
 function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
   if (deletingArtifactIds.value.includes(artifact.id) || artifact.parentId) return;
 
+  if (weaveSourceId.value && weaveSourceId.value !== artifact.id) {
+    const sourceId = weaveSourceId.value;
+    event.preventDefault();
+    event.stopPropagation();
+    weaveSourceId.value = null;
+    selectedArtifactId.value = artifact.id;
+    void createConnection(sourceId, artifact.id);
+    return;
+  }
+
   event.stopPropagation();
   dismissConstellation();
   selectedArtifactId.value = artifact.id;
@@ -1533,6 +2122,22 @@ function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
     startY: artifact.y,
     moved: false,
   };
+}
+
+function handleArtifactKeydown(event: KeyboardEvent, artifact: Artifact) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (weaveSourceId.value && weaveSourceId.value !== artifact.id) {
+    const sourceId = weaveSourceId.value;
+    weaveSourceId.value = null;
+    selectedArtifactId.value = artifact.id;
+    void createConnection(sourceId, artifact.id);
+    return;
+  }
+
+  selectedArtifactId.value = artifact.id;
 }
 
 function handleArtifactPointerMove(event: PointerEvent) {
@@ -2017,6 +2622,10 @@ function handleKeydown(event: KeyboardEvent) {
   const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
 
   if (event.key === 'Escape') {
+    if (weaveSourceId.value) {
+      weaveSourceId.value = null;
+      return;
+    }
     if (activeConstellation.value) {
       dismissConstellation();
       return;
@@ -2037,6 +2646,12 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+  componentHost = new DotComponentHost({
+    getInputs: componentInputSnapshot,
+    onEmit: handleComponentEmit,
+    onReady: (artifactId) => setComponentRuntimeError(artifactId),
+    onError: (artifactId, message) => setComponentRuntimeError(artifactId, message),
+  });
   resetCamera();
   window.addEventListener('keydown', handleKeydown);
   window.addEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
@@ -2047,6 +2662,13 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  componentHost?.dispose();
+  componentHost = null;
+  stopLivingRuntimeSubscription();
+  runtimePortRegistrations.forEach((registration) => registration.dispose());
+  runtimePortRegistrations.clear();
+  runtimeConnectionRegistrations.forEach((_registration, id) => livingRuntime.disconnect(id));
+  runtimeConnectionRegistrations.clear();
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
   window.removeEventListener('resize', syncSelectedArtifactMeasurement);
@@ -2054,6 +2676,7 @@ onUnmounted(() => {
   clearLassoArmTimer();
   if (suggestionTimer) window.clearTimeout(suggestionTimer);
   if (tendrilRaf) cancelAnimationFrame(tendrilRaf);
+  connectionPulseTimers.forEach((timerId) => window.clearTimeout(timerId));
   deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
   forkAnimationTimers.forEach((timerId) => window.clearTimeout(timerId));
 });
@@ -2062,7 +2685,11 @@ onUnmounted(() => {
 <template>
   <main
     class="workspace"
-    :class="{ 'workspace--panning': Boolean(panState), 'workspace--lassoing': Boolean(lassoState?.armed) }"
+    :class="{
+      'workspace--panning': Boolean(panState),
+      'workspace--lassoing': Boolean(lassoState?.armed),
+      'workspace--weave-targeting': Boolean(weaveSourceId),
+    }"
     :style="gridStyle"
     aria-label="Dot creation canvas"
     @pointerdown="handleWorkspacePointerDown"
@@ -2096,7 +2723,16 @@ onUnmounted(() => {
             <stop offset="1" stop-color="rgba(142, 255, 135, 0.6)" />
           </linearGradient>
         </defs>
-        <g v-for="edge in renderedConnections" :key="edge.connection.id" class="tendril" :class="{ 'tendril--pulsing': edge.pulsing }">
+        <g
+          v-for="edge in renderedConnections"
+          :key="edge.connection.id"
+          class="tendril"
+          :class="[
+            `tendril--${edge.connection.status ?? 'resting'}`,
+            `tendril--policy-${edge.connection.policy ?? 'breathe'}`,
+            { 'tendril--pulsing': edge.pulsing },
+          ]"
+        >
           <path class="tendril__glow" :d="edge.path" :stroke="`url(#tendril-grad-${edge.connection.id})`" />
           <path class="tendril__core" :d="edge.path" :stroke="`url(#tendril-grad-${edge.connection.id})`" />
           <circle
@@ -2112,10 +2748,14 @@ onUnmounted(() => {
         <path v-if="liveTendrilPath" class="tendril__live" :d="liveTendrilPath" />
       </svg>
 
-      <div
+      <button
         v-if="selectedTopLevelArtifact && selectedHaloBounds && !isGenerating && !regeneratingArtifactId"
         class="weave-halo"
-        :class="{ 'weave-halo--weaving': Boolean(connectDragState) }"
+        :class="{
+          'weave-halo--weaving': Boolean(connectDragState),
+          'weave-halo--awaiting': weaveSourceId === selectedTopLevelArtifact.id,
+        }"
+        type="button"
         :style="{
           left: `${selectedHaloBounds.x}px`,
           top: `${selectedHaloBounds.y}px`,
@@ -2123,10 +2763,17 @@ onUnmounted(() => {
           height: `${selectedHaloBounds.h}px`,
           '--weave-halo-radius': selectedHaloBounds.radius,
         }"
-        aria-label="Drag from this glow to weave the bubble to another"
+        :aria-label="
+          weaveSourceId === selectedTopLevelArtifact.id
+            ? 'Choose another bubble to complete this living connection'
+            : 'Weave this bubble to another'
+        "
+        :aria-pressed="weaveSourceId === selectedTopLevelArtifact.id"
         @pointerdown="handleAuraPointerDown($event, selectedTopLevelArtifact)"
         @pointermove="handleAuraPointerMove"
         @pointerup="handleAuraPointerUp"
+        @click="handleAuraClick(selectedTopLevelArtifact)"
+        @keydown="handleAuraKeydown($event, selectedTopLevelArtifact)"
       />
 
       <template v-if="activeConstellation">
@@ -2146,22 +2793,26 @@ onUnmounted(() => {
           :key="`constellation-${action.id}-${index}`"
           class="constellation-action"
           :class="{
-            'constellation-action--creating': creatingConstellationActionId === action.id,
-            'constellation-action--waiting': isGenerating && creatingConstellationActionId !== action.id,
+            'constellation-action--queued': queuedConstellationActionIds.includes(action.id),
+            'constellation-action--creating':
+              creatingConstellationActionId === action.id ||
+              (creatingConstellationActionId === 'batch' && queuedConstellationActionIds.includes(action.id)),
+            'constellation-action--waiting':
+              isGenerating && !(creatingConstellationActionId === 'batch' && queuedConstellationActionIds.includes(action.id)),
           }"
           type="button"
           :disabled="isGenerating"
           :title="action.reason"
-          :aria-label="`Create from constellation: ${action.title}`"
+          :aria-label="`Queue constellation action: ${action.title}`"
           :style="{
-            left: `${constellationActionPosition(index, constellationActions.length + 1).x}px`,
-            top: `${constellationActionPosition(index, constellationActions.length + 1).y}px`,
+            left: `${constellationActionPosition(index, constellationOrbitCount).x}px`,
+            top: `${constellationActionPosition(index, constellationOrbitCount).y}px`,
             '--constellation-delay': `${index * 120}ms`,
           }"
           @pointerdown.stop
           @pointermove.stop
           @pointerup.stop
-          @click.stop="executeConstellationAction(action)"
+          @click.stop="toggleConstellationActionQueue(action)"
         >
           <span>{{ action.title }}</span>
           <small>{{ action.reason }}</small>
@@ -2177,8 +2828,8 @@ onUnmounted(() => {
           title="Describe a transformation for this constellation"
           aria-label="Describe a custom constellation action"
           :style="{
-            left: `${constellationActionPosition(constellationActions.length, constellationActions.length + 1).x}px`,
-            top: `${constellationActionPosition(constellationActions.length, constellationActions.length + 1).y}px`,
+            left: `${constellationActionPosition(constellationActions.length, constellationOrbitCount).x}px`,
+            top: `${constellationActionPosition(constellationActions.length, constellationOrbitCount).y}px`,
             '--constellation-delay': `${constellationActions.length * 120}ms`,
           }"
           @pointerdown.stop
@@ -2195,8 +2846,8 @@ onUnmounted(() => {
           class="constellation-custom-prompt"
           :class="{ 'constellation-custom-prompt--creating': creatingConstellationActionId === 'custom' }"
           :style="{
-            left: `${constellationActionPosition(constellationActions.length, constellationActions.length + 1).x}px`,
-            top: `${constellationActionPosition(constellationActions.length, constellationActions.length + 1).y}px`,
+            left: `${constellationActionPosition(constellationActions.length, constellationOrbitCount).x}px`,
+            top: `${constellationActionPosition(constellationActions.length, constellationOrbitCount).y}px`,
           }"
           @pointerdown.stop
           @pointermove.stop
@@ -2213,6 +2864,28 @@ onUnmounted(() => {
           />
           <span>enter to weave</span>
         </form>
+
+        <button
+          v-if="queuedConstellationActions.length"
+          class="constellation-action constellation-action--weave"
+          :class="{ 'constellation-action--creating': creatingConstellationActionId === 'batch' }"
+          type="button"
+          :disabled="isGenerating"
+          :title="`Create ${queuedConstellationActions.length} selected actions`"
+          :aria-label="`Weave ${queuedConstellationActions.length} selected constellation actions`"
+          :style="{
+            left: `${constellationActionPosition(constellationActions.length + 1, constellationOrbitCount).x}px`,
+            top: `${constellationActionPosition(constellationActions.length + 1, constellationOrbitCount).y}px`,
+            '--constellation-delay': `${(constellationActions.length + 1) * 120}ms`,
+          }"
+          @pointerdown.stop
+          @pointermove.stop
+          @pointerup.stop
+          @click.stop="executeQueuedConstellationActions"
+        >
+          <span>Weave {{ queuedConstellationActions.length }}</span>
+          <small>bring them into being</small>
+        </button>
       </template>
 
       <button
@@ -2252,6 +2925,7 @@ onUnmounted(() => {
           'artifact-card--connect-target': connectDragState?.hoverTargetId === artifact.id,
           'artifact-card--lasso-candidate': lassoCandidateArtifactIds.includes(artifact.id),
           'artifact-card--constellation-source': activeConstellation?.artifactIds.includes(artifact.id),
+          'artifact-card--runtime-error': Boolean(artifactRuntimeIssue(artifact.id)),
           },
         ]"
         :style="{
@@ -2268,6 +2942,7 @@ onUnmounted(() => {
         @pointerdown="handleArtifactPointerDown($event, artifact)"
         @pointermove="handleArtifactPointerMove"
         @pointerup="handleArtifactPointerUp"
+        @keydown="handleArtifactKeydown($event, artifact)"
       >
         <div
           v-if="selectedArtifactId === artifact.id && !deletingArtifactIds.includes(artifact.id)"
@@ -2333,8 +3008,16 @@ onUnmounted(() => {
               class="component-frame"
               title="Sandboxed generated component"
               sandbox="allow-scripts"
+              :data-dot-artifact-id="artifact.id"
               :srcdoc="createComponentSrcDoc(artifact.content)"
             />
+            <span
+              v-if="artifactRuntimeIssue(artifact.id)"
+              class="component-runtime-error"
+              :title="artifactRuntimeIssue(artifact.id)"
+            >
+              graft needs care
+            </span>
           </template>
 
           <template v-else-if="artifact.kind === 'image'">
@@ -2402,11 +3085,14 @@ onUnmounted(() => {
         v-for="edge in renderedConnections"
         :key="`meaning-${edge.connection.id}`"
         class="tendril-meaning"
+        :class="`tendril-meaning--${edge.connection.status ?? 'resting'}`"
         :style="{ left: `${edge.mid.x}px`, top: `${edge.mid.y}px` }"
+        :title="connectionBindingLabel(edge.connection)"
         @pointerdown.stop
         @pointerup.stop
       >
         <span>{{ edge.connection.meaning }}</span>
+        <small>{{ connectionBindingLabel(edge.connection) }}</small>
         <button type="button" :aria-label="`Sever connection: ${edge.connection.meaning}`" @click.stop="removeConnection(edge.connection.id)">
           ×
         </button>
@@ -2446,12 +3132,17 @@ onUnmounted(() => {
         :key="`${activeSuggestionArtifact?.id}-${suggestion.title}`"
         class="ghost-suggestion"
         :class="{
-          'ghost-suggestion--creating': creatingSuggestionKey === `${activeSuggestionArtifact?.id}:${index}`,
-          'ghost-suggestion--waiting': creatingSuggestionKey && creatingSuggestionKey !== `${activeSuggestionArtifact?.id}:${index}`,
+          'ghost-suggestion--queued': queuedSuggestionKeys.includes(suggestionKey(activeSuggestionArtifact!.id, suggestion)),
+          'ghost-suggestion--creating':
+            creatingSuggestionKey === `${activeSuggestionArtifact?.id}:batch` &&
+            queuedSuggestionKeys.includes(suggestionKey(activeSuggestionArtifact!.id, suggestion)),
+          'ghost-suggestion--waiting':
+            creatingSuggestionKey &&
+            !(creatingSuggestionKey === `${activeSuggestionArtifact?.id}:batch` && queuedSuggestionKeys.includes(suggestionKey(activeSuggestionArtifact!.id, suggestion))),
         }"
         type="button"
         :title="suggestion.reason"
-        :aria-label="`Create suggested artifact: ${suggestion.title}`"
+        :aria-label="`Queue suggested artifact: ${suggestion.title}`"
         :style="{
           left: `${ghostSuggestionPosition(activeSuggestionArtifact!, index, activeSuggestions.length).x}px`,
           top: `${ghostSuggestionPosition(activeSuggestionArtifact!, index, activeSuggestions.length).y}px`,
@@ -2461,13 +3152,35 @@ onUnmounted(() => {
         @pointermove.stop
         @pointerup.stop
         @dblclick.stop
-        @click.stop="createFromSuggestion(suggestion, index)"
+        @click.stop="toggleSuggestionQueue(suggestion)"
       >
         <span>{{ suggestion.title }}</span>
         <small>{{ suggestion.kind }}</small>
         <i class="orbit-moon orbit-moon--1" aria-hidden="true" />
         <i class="orbit-moon orbit-moon--2" aria-hidden="true" />
         <i class="orbit-moon orbit-moon--3" aria-hidden="true" />
+      </button>
+
+      <button
+        v-if="activeSuggestionArtifact && queuedSuggestions.length"
+        class="ghost-weave"
+        :class="{ 'ghost-weave--creating': creatingSuggestionKey === `${activeSuggestionArtifact.id}:batch` }"
+        type="button"
+        :disabled="isGenerating"
+        :title="`Create ${queuedSuggestions.length} queued suggestions`"
+        :aria-label="`Weave ${queuedSuggestions.length} queued suggested artifacts`"
+        :style="{
+          left: `${ghostWeavePosition(activeSuggestionArtifact).x}px`,
+          top: `${ghostWeavePosition(activeSuggestionArtifact).y}px`,
+        }"
+        @pointerdown.stop
+        @pointermove.stop
+        @pointerup.stop
+        @dblclick.stop
+        @click.stop="executeQueuedSuggestions"
+      >
+        <span>weave {{ queuedSuggestions.length }}</span>
+        <small>make these together</small>
       </button>
 
       <button
@@ -2560,6 +3273,9 @@ onUnmounted(() => {
       <div class="canvas-help__panel" role="tooltip">
         <span>wheel zoom</span>
         <span>drag background pan</span>
+        <span>select + halo weave</span>
+        <span>tendrils carry values</span>
+        <span>breathe absorbs changes</span>
         <span>F fit</span>
         <span>0 reset</span>
       </div>

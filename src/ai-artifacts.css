@@ -13,8 +13,31 @@
   pointer-events: none;
 }
 
+/* Once a bubble opens, its component stops being a preview and becomes an
+   organ the person can touch directly. The surrounding membrane remains the
+   drag surface. */
+.artifact-card--selected .component-frame {
+  pointer-events: auto;
+}
+
 .artifact-content--component {
+  position: relative;
   min-height: 150px;
+}
+
+.component-runtime-error {
+  position: absolute;
+  right: 10px;
+  bottom: 9px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 180, 168, 0.3);
+  border-radius: 999px;
+  color: rgba(255, 206, 194, 0.9);
+  background: rgba(64, 18, 14, 0.68);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  pointer-events: none;
 }
 
 .image-result {

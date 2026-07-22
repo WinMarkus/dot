@@ -16,11 +16,14 @@ export type ArtifactFacet = {
 
 export type ArtifactPortType = 'text' | 'image' | 'video' | 'data' | 'event' | 'component' | 'any';
 
+export type ArtifactPortMode = 'state' | 'event' | 'resource';
+
 export type ArtifactPort = {
   id: string;
   label: string;
   type: ArtifactPortType;
   purpose: string;
+  mode?: ArtifactPortMode;
 };
 
 export type ArtifactPorts = {
@@ -54,6 +57,13 @@ export type ArtifactContent = {
   model?: string;
 };
 
+export type ArtifactRuntimeState = {
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  revision: number;
+  updatedAt?: string;
+};
+
 export type Artifact = {
   id: string;
   kind: ArtifactKind;
@@ -65,6 +75,7 @@ export type Artifact = {
   height: number;
   createdAt: string;
   content: ArtifactContent;
+  runtime?: ArtifactRuntimeState;
   parentId?: string;
 };
 
@@ -82,6 +93,13 @@ export type ArtifactConnection = {
   id: string;
   fromId: string;
   toId: string;
+  fromPortId?: string;
+  toPortId?: string;
+  policy?: 'live' | 'breathe' | 'event';
+  status?: 'resting' | 'flowing' | 'blocked';
+  revision?: number;
+  lastFlowAt?: string;
+  error?: string;
   meaning: string;
   createdAt: string;
 };

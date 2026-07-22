@@ -30,6 +30,38 @@
   filter: drop-shadow(0 0 7px rgba(var(--c-warm), 0.85));
 }
 
+/* Rest is part of the organism. Motes only become visible when the runtime is
+   actually carrying a value; dormant context remains as a quiet filament. */
+.tendril--resting .tendril__mote,
+.tendril--policy-breathe:not(.tendril--pulsing) .tendril__mote,
+.tendril--blocked .tendril__mote {
+  opacity: 0;
+}
+
+.tendril--flowing .tendril__glow {
+  opacity: 0.5;
+  stroke-width: 13;
+}
+
+.tendril--flowing .tendril__core {
+  opacity: 0.95;
+  stroke-width: 2.8;
+}
+
+.tendril--policy-breathe:not(.tendril--pulsing) .tendril__core {
+  opacity: 0.34;
+  stroke-dasharray: 2 7;
+}
+
+.tendril--blocked .tendril__glow {
+  opacity: 0.12;
+}
+
+.tendril--blocked .tendril__core {
+  opacity: 0.38;
+  stroke-dasharray: 3 9;
+}
+
 .tendril--pulsing .tendril__glow {
   opacity: 0.45;
   stroke-width: 13;
@@ -71,6 +103,30 @@
     background 160ms ease;
 }
 
+.tendril-meaning small {
+  display: none;
+  color: rgba(var(--c-life), 0.68);
+  font-size: 0.52rem;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.tendril-meaning:hover small,
+.tendril-meaning:focus-within small {
+  display: inline;
+}
+
+.tendril-meaning--flowing {
+  color: rgba(var(--c-ink), 0.94);
+  background: rgba(var(--c-deep), 0.82);
+  box-shadow: 0 0 22px rgba(var(--c-life), 0.18);
+}
+
+.tendril-meaning--blocked {
+  color: rgba(255, 180, 168, 0.78);
+}
+
 .tendril-meaning:hover {
   color: rgba(var(--c-ink), 0.92);
   background: rgba(var(--c-deep), 0.78);
@@ -102,6 +158,8 @@
   position: absolute;
   z-index: 0;
   overflow: hidden;
+  padding: 0;
+  border: 0;
   border-radius: 999px;
   background: radial-gradient(
     closest-side,
@@ -119,6 +177,25 @@
     filter 180ms ease,
     background 180ms ease,
     transform 180ms ease;
+}
+
+.weave-halo--awaiting {
+  background: radial-gradient(
+    closest-side,
+    transparent 44%,
+    rgba(var(--c-life), 0.12) 58%,
+    rgba(var(--c-spark), 0.3) 73%,
+    rgba(var(--c-life), 0.17) 85%,
+    transparent 100%
+  );
+  cursor: crosshair;
+  filter: blur(0.7px) brightness(1.2);
+  animation-duration: 1.8s;
+}
+
+.workspace--weave-targeting .artifact-card:not(.artifact-card--selected) {
+  cursor: crosshair;
+  filter: brightness(1.08) saturate(1.06);
 }
 
 .weave-halo::before,

@@ -15,12 +15,22 @@ app.use(express.json({ limit: '1mb' }));
 const portSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['id', 'label', 'type', 'purpose'],
+  required: ['id', 'label', 'type', 'mode', 'purpose'],
   properties: {
-    id: { type: 'string' },
-    label: { type: 'string' },
+    id: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 40,
+      pattern: '^[a-zA-Z][a-zA-Z0-9_-]*$',
+      description: 'Stable executable id used verbatim by Dot.inputs or Dot.emit.',
+    },
+    label: { type: 'string', minLength: 1, maxLength: 60 },
     type: { enum: ['text', 'image', 'video', 'data', 'event', 'component', 'any'] },
-    purpose: { type: 'string' },
+    mode: {
+      enum: ['state', 'event', 'resource'],
+      description: 'state is a live latest value; event is a discrete occurrence; resource is durable generated content.',
+    },
+    purpose: { type: 'string', minLength: 1, maxLength: 180 },
   },
 };
 
@@ -115,6 +125,11 @@ Return ONLY valid JSON:
 
 If connectedInputs are provided, they are living context flowing into this artifact through its connections on the canvas. Weave them in meaningfully: a forest connected to trees knows those trees; a component connected to an image and a text should actually use them.
 
+Ports are executable public contracts, not descriptive tags. A port has this shape:
+{"id":"mood","label":"mood","type":"text | image | video | data | event | component | any","mode":"state | event | resource","purpose":"How this exact value changes or leaves the artifact."}
+Use short stable ids (lower camelCase, beginning with a letter), unique within each direction. Never invent generic ports named props, input, output, event, or state. Declare only values that another artifact can genuinely provide or consume.
+Choose mode deliberately: state carries the latest reactive value, event is a discrete pulse such as submit or select, and resource is durable content such as a document, image, dataset, video, or component.
+
 Hard rules:
 1. If preferredKind is given, follow it unless the prompt clearly contradicts it.
 2. If the user explicitly asks for an image, video, text, or component, return exactly ONE primary artifact of that kind.
@@ -128,8 +143,21 @@ Hard rules:
    - Vue is available as the global "Vue"; destructure what you need, e.g. const { ref, computed } = Vue
    - no import statements, no external scripts or stylesheets, no network calls
    - make it feel alive: real interactivity and tasteful self-contained styling
-8. Only create children when the user clearly asks for a structure or hierarchy.
-9. Prefer obeying the user's obvious intent over being clever.
+   - design ports and implementation together; every component must expose at least one useful input and one useful output
+   - every declared input id must be read from the reactive global Dot.inputs using that exact id; use computed/watch so later connected values update the rendered component instead of taking a one-time snapshot
+   - every declared output id must be sent through Dot.emit(outputPortId, value) using that exact id when the relevant state changes or interaction occurs; emitted values must be JSON-serializable
+   - emit each state output once from Vue onMounted so a connection can receive its initial value; emit it again whenever that state changes. Event outputs emit only when the event actually occurs and must never be replayed as initial state
+   - use a safe standalone fallback so internal interactivity still works when Dot has not been injected. Follow this pattern (adapt defaults to the component):
+     const fallbackInputs = reactive({ mood: "calm" });
+     const dot = globalThis.Dot ?? { inputs: fallbackInputs, emit: () => {} };
+     const dotInputs = dot.inputs ?? fallbackInputs;
+     const emitDot = typeof dot.emit === "function" ? dot.emit.bind(dot) : () => {};
+     // read dotInputs.mood reactively; call emitDot("selection", value)
+   - connected inputs enhance or steer the experience but must not be required for basic standalone interaction
+   - do not declare a port unless content.vue actually reads or emits it; labels and purposes must describe the concrete value rather than implementation jargon
+8. Give every non-component artifact useful ports too: its primary result should be an output (text, data, image, or video), and inputs should name concrete influences such as sourceText, palette, script, or records. These ports describe generative flow and do not use the Dot runtime.
+9. Only create children when the user clearly asks for a structure or hierarchy.
+10. Prefer obeying the user's obvious intent over being clever.
 
 Be concrete and useful.`;
 }
@@ -226,14 +254,115 @@ function buildUserPayload(body) {
   };
 }
 
+const PORT_TYPES = new Set(['text', 'image', 'video', 'data', 'event', 'component', 'any']);
+const PORT_MODES = new Set(['state', 'event', 'resource']);
+
+function normalizePortId(value, fallback) {
+  const id = safeString(value)
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+
+  if (!id) return fallback;
+  return /^[a-zA-Z]/.test(id) ? id : `port_${id}`.slice(0, 40);
+}
+
 function safePort(port, index, direction) {
-  const type = ['text', 'image', 'video', 'data', 'event', 'component', 'any'].includes(port?.type) ? port.type : 'any';
+  const fallbackId = `${direction}_${index + 1}`;
+  const id = normalizePortId(port?.id, fallbackId);
+  const type = PORT_TYPES.has(port?.type) ? port.type : 'any';
+  const inferredMode = type === 'event' ? 'event' : ['image', 'video', 'component'].includes(type) ? 'resource' : 'state';
+  const mode = PORT_MODES.has(port?.mode) ? port.mode : inferredMode;
+  const label = safeString(port?.label).trim() || titleFromPortId(id);
+  const fallbackPurpose = direction === 'input' ? 'A value that steers this artifact.' : 'A value this artifact makes available.';
+  const purpose = safeString(port?.purpose).trim() || fallbackPurpose;
   return {
-    id: safeString(port?.id, `${direction}_${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40),
-    label: safeString(port?.label, `${direction} ${index + 1}`).slice(0, 60),
+    id,
+    label: label.slice(0, 60),
     type,
-    purpose: safeString(port?.purpose, 'Potential connection point.').slice(0, 180),
+    mode,
+    purpose: purpose.slice(0, 180),
   };
+}
+
+function normalizePortList(value, direction) {
+  const seen = new Set();
+  return safeArray(value)
+    .slice(0, 8)
+    .map((port, index) => safePort(port, index, direction))
+    .filter((port) => {
+      if (seen.has(port.id)) return false;
+      seen.add(port.id);
+      return true;
+    });
+}
+
+function titleFromPortId(id) {
+  return id
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase();
+}
+
+function extractComponentRuntimePortIds(vue, direction) {
+  const ids = [];
+  const patterns =
+    direction === 'input'
+      ? [
+          /\b(?:dotInputs|Dot\.inputs|dot\.inputs)\s*(?:\?\.|\.)\s*([a-zA-Z][a-zA-Z0-9_-]*)/g,
+          /\b(?:dotInputs|Dot\.inputs|dot\.inputs)\s*(?:\?\.)?\[\s*['"]([a-zA-Z][a-zA-Z0-9_-]*)['"]\s*\]/g,
+        ]
+      : [
+          /\b(?:emitDot|Dot\.emit|dot\.emit)\s*(?:\?\.)?\(\s*['"]([a-zA-Z][a-zA-Z0-9_-]*)['"]/g,
+        ];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(vue))) ids.push(match[1]);
+  }
+
+  return [...new Set(ids)].slice(0, 8);
+}
+
+function mergeRuntimePorts(declared, runtimeIds, direction) {
+  const seen = new Set(declared.map((port) => port.id));
+  const inferred = runtimeIds
+    .filter((id) => !seen.has(id))
+    .map((id) => ({
+      id,
+      label: titleFromPortId(id),
+      type: 'any',
+      mode: 'state',
+      purpose: direction === 'input' ? 'A live value consumed by this component.' : 'A live value emitted by this component.',
+    }));
+
+  return [...declared, ...inferred].slice(0, 8);
+}
+
+function defaultResultPort(kind) {
+  const defaults = {
+    text: { id: 'text', label: 'text', type: 'text', mode: 'resource', purpose: 'The generated written result.' },
+    object: { id: 'data', label: 'data', type: 'data', mode: 'resource', purpose: 'The structured object data.' },
+    image: { id: 'image', label: 'image', type: 'image', mode: 'resource', purpose: 'The generated image result.' },
+    video: { id: 'video', label: 'video', type: 'video', mode: 'resource', purpose: 'The generated video result.' },
+  };
+  return defaults[kind] ?? null;
+}
+
+function normalizeArtifactPorts(kind, ports, vue) {
+  let inputs = normalizePortList(ports.inputs, 'input');
+  let outputs = normalizePortList(ports.outputs, 'output');
+
+  if (kind === 'component') {
+    inputs = mergeRuntimePorts(inputs, extractComponentRuntimePortIds(vue, 'input'), 'input');
+    outputs = mergeRuntimePorts(outputs, extractComponentRuntimePortIds(vue, 'output'), 'output');
+  } else if (!outputs.length) {
+    const resultPort = defaultResultPort(kind);
+    if (resultPort) outputs = [resultPort];
+  }
+
+  return { inputs, outputs };
 }
 
 function normalizeArtifact(input, depth = 0) {
@@ -241,6 +370,8 @@ function normalizeArtifact(input, depth = 0) {
   const kind = allowedKinds.has(input?.kind) ? input.kind : 'object';
   const content = input?.content && typeof input.content === 'object' ? input.content : {};
   const ports = input?.ports && typeof input.ports === 'object' ? input.ports : {};
+  const vue = safeString(content.vue);
+  const normalizedPorts = normalizeArtifactPorts(kind, ports, vue);
 
   return {
     kind,
@@ -252,16 +383,13 @@ function normalizeArtifact(input, depth = 0) {
       description: safeString(content.description || content.imagePrompt || content.text || input?.summary),
       imagePrompt: safeString(content.imagePrompt || content.description),
       storyboard: safeArray(content.storyboard).map((item) => safeString(item)).filter(Boolean).slice(0, 8),
-      vue: safeString(content.vue),
+      vue,
       html: safeString(content.html),
       css: safeString(content.css),
       js: safeString(content.js),
       data: content.data && typeof content.data === 'object' && !Array.isArray(content.data) ? content.data : {},
     },
-    ports: {
-      inputs: safeArray(ports.inputs).slice(0, 8).map((port, index) => safePort(port, index, 'input')),
-      outputs: safeArray(ports.outputs).slice(0, 8).map((port, index) => safePort(port, index, 'output')),
-    },
+    ports: normalizedPorts,
     children: depth >= 1 ? [] : safeArray(input?.children).slice(0, 6).map((child) => normalizeArtifact(child, depth + 1)),
   };
 }

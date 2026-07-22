@@ -1,6 +1,10 @@
 # Dot
 
-A minimal generative creation canvas prototype.
+Dot is a spatial workshop where ideas become living, composable artifacts. Its
+goal is to shorten the distance between imagining something and having a useful
+system: create a piece, see what it can receive and provide, then weave pieces
+together until the canvas behaves like a small organism rather than a folder of
+isolated AI outputs.
 
 ## Current interaction model
 
@@ -12,16 +16,19 @@ A minimal generative creation canvas prototype.
 - OpenRouter-backed generation returns text, object, image, video, or component artifacts
 - if the AI route is missing or fails, the app falls back to the local placeholder generator
 - object artifacts use a universal shell with purpose, ports, tags, and possible connections
-- component artifacts are generated as Vue 3 single-file components and rendered in a sandboxed iframe
+- component artifacts are generated as Vue 3 single-file components and rendered in a sandboxed iframe; selecting one enables its controls directly on the canvas
 - image artifacts are generated via OpenRouter image models (default Gemini 3.1 Flash Lite Image) and render as real images in the bubble, with a breathing placeholder while painting and a retry control on failure
 - the shell avoids domain-specific UI assumptions; meaning should come from the model
 - generated artifacts materialize onto the canvas
 - generated artifacts are draggable
 - newly created artifacts are selected automatically
-- bubbles connect: drag from the dashed aura ring around the selected bubble onto any other bubble to weave a tendril between them; the AI names what the connection means ("gives words to", "grows within")
-- connections are living context: whenever a bubble (re)generates, the content of its connected upstream bubbles flows in as input
-- when a bubble changes, its downstream neighbors glow stale and grow a "breathe" badge — one click lets them regenerate and absorb the change, rippling onward by invitation
-- tendrils render as organic drifting filaments (warm at the giving end, green at the receiving end); the meaning pill at the midpoint can sever the connection
+- bubbles connect: drag from the aura around the selected bubble onto another, or focus the halo and press Enter/Space before choosing a target; the AI names what the connection means ("gives words to", "grows within")
+- ports are executable contracts. Dot pairs a compatible output and input, then shows the exact binding and policy on the tendril (for example `count → seed · live`)
+- component-to-component bindings carry JSON values immediately through a sandboxed message bridge; interaction in one generated component can visibly update another
+- durable or generative content uses a `breathe` connection: a changed upstream value waits at the boundary until the user asks the receiver to absorb and regenerate from it
+- feedback cycles are made deliberate: a connection that would close an automatic loop is downgraded to `breathe`, preventing runaway component feedback while preserving the relationship
+- connections are living context: whenever a bubble (re)generates, the actual value of its connected upstream port flows in as input
+- tendrils render as organic filaments (warm at the giving end, green at the receiving end), wake and carry motes only when data moves, then return to rest; the meaning pill at the midpoint can sever the connection
 - artifacts hatched from ghost suggestions arrive pre-connected to their source
 - the selected artifact grows ghost suggestions: up to three faint dashed bubbles proposing the next artifact to create (a cheap model imagines expansions, complements, and transformations); one click generates it for real at the ghost's position
 - selected artifacts show a small action dot
@@ -63,7 +70,10 @@ A minimal generative creation canvas prototype.
 - `src/constants.ts` contains core sizing, zoom, and transition constants
 - `src/artifact-factory.ts` contains local fallback generation, artifact cloning, and artifact creation helpers
 - `src/ai-client.ts` calls the generation API from the frontend
-- `src/component-srcdoc.ts` creates sandboxed iframe documents for generated components
+- `src/component-srcdoc.ts` creates sandboxed iframe documents and installs the in-frame `Dot` API
+- `src/component-host.ts` owns capability-scoped `MessageChannel` sessions between the canvas and component frames
+- `src/connection-contract.ts` pairs compatible ports, chooses live/event/breathe behavior, and adapts static artifacts into port values
+- `src/living-runtime.ts` routes immutable packets, revisions, deferred breathes, activity state, and guarded flows without depending on Vue
 - `src/artifact-tree.ts` contains parent/child artifact tree helpers
 - `src/geometry.ts` contains canvas, camera, and coordinate helpers
 - `src/App.vue` still owns runtime interaction orchestration and rendering
@@ -129,4 +139,29 @@ The backend asks the model to return strict JSON containing canvas artifacts. Ro
 
 Generated components are Vue 3 single-file components (in `content.vue`) mounted only inside a sandboxed iframe. The iframe CSP blocks network access and external assets; the only allowed external script is the app-served Vue runtime. Legacy `html`/`css`/`js` components still render through the old sandbox path.
 
-Image artifacts arrive as a spec first (`content.imagePrompt`), then the client calls `POST /api/generate-image`, which asks an OpenRouter image model (default Gemini 2.5 Flash Image) for the actual picture and returns it as a base64 data URL stored in `content.imageUrl`.
+Every port also declares a mode:
+
+- `state`: the latest reactive value, such as a count, selection, or current mood
+- `event`: a discrete occurrence, such as submit, grow, or choose
+- `resource`: durable generated content, such as text, an image, a dataset, or a video
+
+Inside a generated component, the canvas exposes a small global API before the
+component code runs:
+
+```js
+const dot = globalThis.Dot;
+const mood = Vue.computed(() => dot.inputs.mood ?? 'calm');
+
+function choose(value) {
+  dot.emit('selection', { value });
+}
+```
+
+`Dot.inputs` is a reactive, readonly object keyed by declared input IDs.
+`Dot.emit(id, value)` accepts compact JSON-serializable output values keyed by
+declared output IDs. `Dot.connected`, `Dot.revision`, and `Dot.version` expose
+bridge state for graceful standalone fallbacks and diagnostics. The frame never
+receives ambient parent access: the host grants one dedicated message port after
+matching the requesting sandboxed iframe.
+
+Image artifacts arrive as a spec first (`content.imagePrompt`), then the client calls `POST /api/generate-image`, which asks an OpenRouter image model (default Gemini 3.1 Flash Lite Image) for the actual picture and returns it as a base64 data URL stored in `content.imageUrl`.

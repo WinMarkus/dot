@@ -1,6 +1,6 @@
 import type { Artifact, ArtifactKind, ArtifactPorts, ConnectedInput, GeneratedArtifact, GroupAction } from './types';
 
-export type GenerateMode = 'create' | 'edit' | 'regenerate';
+export type GenerateMode = 'create' | 'edit' | 'regenerate' | 'repair';
 
 export type CanvasArtifactContext = {
   id: string;

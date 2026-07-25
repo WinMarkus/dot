@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { generateArtifactsWithAi, generateImageWithAi, nameConnection, suggestGroupActions, suggestNextArtifacts } from './ai-client';
-import type { ArtifactSuggestion } from './ai-client';
+import type { ArtifactSuggestion, GenerateMode } from './ai-client';
 import type { ArtifactConnection, ConnectedInput } from './types';
 import { createArtifactFromGenerated, cloneArtifact, fakeGenerateArtifact, nowLabel } from './artifact-factory';
 import {
@@ -35,6 +35,7 @@ const camera = ref<CameraState>({ x: 0, y: 0, zoom: 1 });
 const isDotActive = ref(false);
 const isGenerating = ref(false);
 const regeneratingArtifactId = ref<string | null>(null);
+const repairingComponentIds = ref<string[]>([]);
 const prompt = ref('');
 const promptMode = ref<PromptMode>({ type: 'create' });
 const promptInput = ref<HTMLInputElement | null>(null);
@@ -427,7 +428,7 @@ function createCanvasContext() {
 
 async function requestGeneratedArtifacts(
   value: string,
-  mode: 'create' | 'edit' | 'regenerate',
+  mode: GenerateMode,
   selectedArtifact?: Artifact,
   preferredKind?: ArtifactSuggestion['kind'],
   connectedInputs?: ConnectedInput[],
@@ -488,8 +489,16 @@ function setComponentRuntimeError(artifactId: string, message?: string) {
   componentRuntimeErrors.value = next;
 }
 
+function componentRuntimeIssue(artifactId: string) {
+  return componentRuntimeErrors.value[artifactId];
+}
+
+function connectionRuntimeIssue(artifactId: string) {
+  return connections.value.find((connection) => connection.toId === artifactId && connection.error)?.error;
+}
+
 function artifactRuntimeIssue(artifactId: string) {
-  return componentRuntimeErrors.value[artifactId] ?? connections.value.find((connection) => connection.toId === artifactId && connection.error)?.error;
+  return componentRuntimeIssue(artifactId) ?? connectionRuntimeIssue(artifactId);
 }
 
 const livingRuntime = new LivingRuntime({
@@ -711,7 +720,6 @@ function publishArtifactOutput(artifact: Artifact, portId: string, value = readA
     runtime.outputs = { ...runtime.outputs, [portId]: serializable };
     runtime.revision = Math.max(runtime.revision + 1, packet.revision);
     runtime.updatedAt = new Date(packet.emittedAt).toISOString();
-    setComponentRuntimeError(artifact.id);
   } catch (error) {
     setComponentRuntimeError(artifact.id, error instanceof Error ? error.message : 'Could not emit this value.');
   }
@@ -2112,6 +2120,7 @@ function applyGeneratedArtifact(target: Artifact, generated: GeneratedArtifact, 
     revision: previousRuntime.revision + 1,
     updatedAt: new Date().toISOString(),
   };
+  setComponentRuntimeError(target.id);
   evolveArtifactConnections(target.id);
   syncLivingRuntime();
   if (target.kind !== 'component') publishArtifactOutputs(target);
@@ -2739,7 +2748,7 @@ function closePrompt() {
 }
 
 async function regenerateArtifact(artifact: Artifact) {
-  if (regeneratingArtifactId.value || deletingArtifactIds.value.includes(artifact.id)) return;
+  if (isGenerating.value || regeneratingArtifactId.value || deletingArtifactIds.value.includes(artifact.id)) return;
 
   regeneratingArtifactId.value = artifact.id;
   activeActionArtifactId.value = null;
@@ -2753,6 +2762,59 @@ async function regenerateArtifact(artifact: Artifact) {
     }
   } finally {
     regeneratingArtifactId.value = null;
+  }
+}
+
+function isRepairingComponent(artifactId: string) {
+  return repairingComponentIds.value.includes(artifactId);
+}
+
+async function repairComponentArtifact(artifact: Artifact) {
+  const current = findLiveArtifact(artifact.id);
+  if (
+    !current ||
+    current.kind !== 'component' ||
+    isGenerating.value ||
+    isRepairingComponent(current.id) ||
+    deletingArtifactIds.value.includes(current.id) ||
+    Boolean(regeneratingArtifactId.value)
+  ) {
+    return;
+  }
+
+  const runtimeIssue = componentRuntimeIssue(current.id) ?? 'The component did not become ready.';
+  const originalPrompt = current.prompt;
+  const originalTitle = current.title;
+  const originalVue = current.content.vue;
+  const repairPrompt = [
+    `Repair “${current.title}” in place.`,
+    `Current runtime failure: ${runtimeIssue}`,
+    `Preserve the original intent: ${originalPrompt || current.title}`,
+    'Use the selected artifact and its current Vue source as the starting point.',
+    'Return one complete, immediately useful component with working interactions and the same declared connection contract.',
+  ].join('\n');
+
+  repairingComponentIds.value = [...repairingComponentIds.value, current.id];
+  isGenerating.value = true;
+  activeActionArtifactId.value = null;
+
+  try {
+    const generated = await requestGeneratedArtifacts(
+      repairPrompt,
+      'repair',
+      current,
+      'component',
+      buildConnectedInputs(current.id),
+    );
+    const live = findLiveArtifact(current.id);
+    const repaired = generated[0];
+    if (live?.kind === 'component' && live.content.vue === originalVue && repaired) {
+      applyGeneratedArtifact(live, { ...repaired, title: originalTitle, children: [] }, originalPrompt);
+      selectedArtifactId.value = live.id;
+    }
+  } finally {
+    repairingComponentIds.value = repairingComponentIds.value.filter((id) => id !== current.id);
+    isGenerating.value = false;
   }
 }
 
@@ -2993,7 +3055,6 @@ onMounted(() => {
   componentHost = new DotComponentHost({
     getInputs: componentInputSnapshot,
     onEmit: handleComponentEmit,
-    onReady: (artifactId) => setComponentRuntimeError(artifactId),
     onCloseRequest: (artifactId) => {
       if (runningArtifactId.value === artifactId) closeArtifactRun();
     },
@@ -3383,12 +3444,35 @@ onUnmounted(() => {
               :data-dot-artifact-id="artifact.id"
               :srcdoc="createComponentSrcDoc(artifact.content)"
             />
-            <span
-              v-if="artifactRuntimeIssue(artifact.id)"
+            <button
+              v-if="componentRuntimeIssue(artifact.id)"
               class="component-runtime-error"
-              :title="artifactRuntimeIssue(artifact.id)"
+              :class="{ 'component-runtime-error--repairing': isRepairingComponent(artifact.id) }"
+              type="button"
+              :title="componentRuntimeIssue(artifact.id)"
+              :aria-label="`Repair ${artifact.title}. ${componentRuntimeIssue(artifact.id)}`"
+              :aria-busy="isRepairingComponent(artifact.id)"
+              :disabled="
+                isGenerating ||
+                isRepairingComponent(artifact.id) ||
+                regeneratingArtifactId === artifact.id ||
+                deletingArtifactIds.includes(artifact.id)
+              "
+              aria-live="polite"
+              @pointerdown.stop
+              @pointermove.stop
+              @pointerup.stop
+              @click.stop="repairComponentArtifact(artifact)"
             >
-              graft needs care
+              {{ isRepairingComponent(artifact.id) ? 'mending graft…' : 'graft needs care · repair' }}
+            </button>
+            <span
+              v-else-if="connectionRuntimeIssue(artifact.id)"
+              class="component-runtime-error component-runtime-error--connection"
+              role="status"
+              :title="connectionRuntimeIssue(artifact.id)"
+            >
+              connection needs care
             </span>
           </template>
 
@@ -3739,7 +3823,10 @@ onUnmounted(() => {
 
     <form
       class="command-bar"
-      :class="{ 'command-bar--visible': isDotActive || (isGenerating && !creatingSuggestionKey) }"
+      :class="{
+        'command-bar--visible':
+          isDotActive || (isGenerating && !creatingSuggestionKey && !repairingComponentIds.length),
+      }"
       @submit.prevent="submitPrompt"
     >
       <div class="command-bar__status">

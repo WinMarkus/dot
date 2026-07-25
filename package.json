@@ -10,10 +10,12 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "start": "node --import ./server/canvas-persistence.mjs server/index.mjs"
+    "start": "node --import ./server/canvas-persistence.mjs server/index.mjs",
+    "test:component-quality": "node --test server/component-quality.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/compiler-sfc": "^3.5.17",
     "express": "^4.19.2",
     "typescript": "^5.8.3",
     "vite": "^7.0.0",

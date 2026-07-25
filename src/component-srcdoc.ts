@@ -156,6 +156,7 @@ const DOT_RUNTIME_BOOTSTRAP = `(function installDotRuntime() {
 
       const PROTOCOL = ${toJsLiteral(DOT_COMPONENT_BRIDGE_PROTOCOL)};
       const VERSION = ${DOT_COMPONENT_BRIDGE_VERSION};
+      let componentFailed = false;
       const rawInputs = Object.create(null);
       const reactiveInputs = window.Vue && typeof window.Vue.reactive === 'function'
         ? window.Vue.reactive(rawInputs)
@@ -170,6 +171,12 @@ const DOT_RUNTIME_BOOTSTRAP = `(function installDotRuntime() {
       let lastHeight = -1;
       let resizeFrame = 0;
       let componentReady = false;
+
+      Object.defineProperty(window, '__DOT_COMPONENT_FAILED__', {
+        configurable: false,
+        enumerable: false,
+        get: () => componentFailed,
+      });
 
       function packet(type, fields) {
         return Object.assign({ protocol: PROTOCOL, version: VERSION, type: type }, fields || {});
@@ -198,6 +205,11 @@ const DOT_RUNTIME_BOOTSTRAP = `(function installDotRuntime() {
       }
 
       function reportError(error, phase) {
+        componentFailed = true;
+        componentReady = false;
+        for (let index = pending.length - 1; index >= 0; index -= 1) {
+          if (pending[index].type === 'dot:ready') pending.splice(index, 1);
+        }
         const message = String(error && error.message || error || 'Unknown component error').slice(0, 4000);
         const stack = error && typeof error.stack === 'string' ? error.stack.slice(0, 12000) : undefined;
         send(packet('dot:error', { message: message, phase: phase || undefined, stack: stack }));
@@ -318,10 +330,12 @@ const DOT_RUNTIME_BOOTSTRAP = `(function installDotRuntime() {
       }
 
       function ready() {
+        if (componentFailed) return false;
         componentReady = true;
         send(packet('dot:ready', { capabilities: ['inputs', 'outputs', 'resize', 'errors'] }));
         requestBridge();
         scheduleResize();
+        return true;
       }
 
       const api = {};
@@ -337,7 +351,12 @@ const DOT_RUNTIME_BOOTSTRAP = `(function installDotRuntime() {
 
       Object.defineProperty(window, '__DOT_COMPONENT_RUNTIME__', {
         configurable: false,
-        value: Object.freeze({ ready: ready, reportError: reportError, scheduleResize: scheduleResize }),
+        value: Object.freeze({
+          ready: ready,
+          reportError: reportError,
+          scheduleResize: scheduleResize,
+          hasFailed: () => componentFailed,
+        }),
         writable: false,
       });
 
@@ -370,10 +389,89 @@ const DOT_RUNTIME_BOOTSTRAP = `(function installDotRuntime() {
 
 const ERROR_REPORTER = `function __reportError(error, phase) {
       window.__DOT_COMPONENT_RUNTIME__.reportError(error, phase);
-      const errorEl = document.createElement('pre');
-      errorEl.style.cssText = 'white-space:pre-wrap;color:#ffb4a8;background:rgba(0,0,0,.35);padding:10px;border-radius:12px;font:12px ui-monospace,monospace;';
+      let errorEl = document.getElementById('dot-component-error');
+      if (!errorEl) {
+        errorEl = document.createElement('pre');
+        errorEl.id = 'dot-component-error';
+        errorEl.setAttribute('role', 'alert');
+        errorEl.style.cssText = 'white-space:pre-wrap;color:#ffb4a8;background:rgba(0,0,0,.35);padding:10px;border-radius:12px;font:12px ui-monospace,monospace;';
+        (document.body || document.documentElement).appendChild(errorEl);
+      }
       errorEl.textContent = 'Component error: ' + String(error && error.message || error);
-      document.body.appendChild(errorEl);
+    }`;
+
+const RENDER_READINESS_CHECK = `function __isVisiblyLaidOut(element) {
+      if (!element || !(element instanceof Element)) return false;
+      let current = element;
+      while (current && current instanceof Element) {
+        const style = getComputedStyle(current);
+        if (
+          style.display === 'none' ||
+          style.visibility === 'hidden' ||
+          style.visibility === 'collapse' ||
+          Number(style.opacity) <= 0.01
+        ) return false;
+        current = current.parentElement;
+      }
+      const rect = element.getBoundingClientRect();
+      return (
+        Number.isFinite(rect.width) &&
+        Number.isFinite(rect.height) &&
+        rect.width >= 4 &&
+        rect.height >= 4 &&
+        rect.right > 0 &&
+        rect.bottom > 0 &&
+        rect.left < window.innerWidth &&
+        rect.top < window.innerHeight
+      );
+    }
+
+    function __hasMeaningfulContent(root) {
+      if (!root || window.__DOT_COMPONENT_RUNTIME__.hasFailed()) return false;
+      const visibleElements = Array.from(root.querySelectorAll('*')).filter(__isVisiblyLaidOut);
+      if (!visibleElements.length) return false;
+
+      const visualSelector = [
+        'button', 'input', 'select', 'textarea', 'a[href]', 'summary',
+        '[role="button"]', '[role="slider"]', '[role="option"]', '[tabindex]',
+        'svg', 'canvas', 'img', 'picture', 'video', 'audio', 'meter', 'progress',
+      ].join(',');
+      if (
+        Array.from(root.querySelectorAll(visualSelector)).some((element) => __isVisiblyLaidOut(element))
+      ) return true;
+
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let visibleText = '';
+      let node;
+      while ((node = walker.nextNode())) {
+        const text = String(node.textContent || '').replace(/\\s+/g, ' ').trim();
+        const parent = node.parentElement;
+        if (!text || !parent || !__isVisiblyLaidOut(parent)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) visibleText += ' ' + text;
+        if (visibleText.trim().length >= 8) return true;
+      }
+      return false;
+    }
+
+    function __readyWhenMeaningful(root, phase) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        try {
+          if (window.__DOT_COMPONENT_RUNTIME__.hasFailed()) return;
+          if (!__hasMeaningfulContent(root)) {
+            __reportError(
+              new Error('The component rendered no visible interactive, visual, or textual content.'),
+              phase + ':render',
+            );
+            return;
+          }
+          window.__DOT_COMPONENT_RUNTIME__.ready();
+        } catch (error) {
+          __reportError(error, phase + ':render');
+        }
+      }));
     }`;
 
 function createLegacySrcDoc(content: ArtifactContent) {
@@ -394,6 +492,7 @@ function createLegacySrcDoc(content: ArtifactContent) {
   <script>
     ${DOT_RUNTIME_BOOTSTRAP}
     ${ERROR_REPORTER}
+    ${RENDER_READINESS_CHECK}
   <\/script>
 </head>
 <body>
@@ -401,7 +500,7 @@ function createLegacySrcDoc(content: ArtifactContent) {
   <script>
     try {
       ${escapeClosingTags(js)}
-      window.__DOT_COMPONENT_RUNTIME__.ready();
+      __readyWhenMeaningful(document.body, 'legacy');
     } catch (error) {
       __reportError(error, 'legacy');
     }
@@ -429,6 +528,7 @@ function createVueSrcDoc(sfcSource: string) {
   <script>
     ${DOT_RUNTIME_BOOTSTRAP}
     ${ERROR_REPORTER}
+    ${RENDER_READINESS_CHECK}
   <\/script>
 </head>
 <body>
@@ -448,7 +548,7 @@ function createVueSrcDoc(sfcSource: string) {
       const app = Vue.createApp(__definition__);
       app.config.errorHandler = (error, _instance, info) => __reportError(error, 'vue:' + info);
       app.mount('#app');
-      Vue.nextTick(() => window.__DOT_COMPONENT_RUNTIME__.ready());
+      Vue.nextTick(() => __readyWhenMeaningful(document.getElementById('app'), 'vue'));
     } catch (error) {
       __reportError(error, 'vue:mount');
     }
@@ -457,7 +557,40 @@ function createVueSrcDoc(sfcSource: string) {
 </html>`;
 }
 
+function createValidationErrorSrcDoc(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : String(error || 'The generated component could not be parsed.');
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; media-src data: blob:;" />
+  <style>
+    ${COMPONENT_BASE_CSS}
+  </style>
+  <script>
+    ${DOT_RUNTIME_BOOTSTRAP}
+    ${ERROR_REPORTER}
+  <\/script>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    __reportError(new Error(${toJsLiteral(message)}), 'vue:validation');
+  <\/script>
+</body>
+</html>`;
+}
+
 export function createComponentSrcDoc(content: ArtifactContent) {
-  if (content.vue?.trim()) return createVueSrcDoc(content.vue);
+  if (content.vue?.trim()) {
+    try {
+      return createVueSrcDoc(content.vue);
+    } catch (error) {
+      return createValidationErrorSrcDoc(error);
+    }
+  }
   return createLegacySrcDoc(content);
 }

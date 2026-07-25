@@ -54,7 +54,7 @@ function inferConnections(value: string) {
 export function detectArtifactKind(value: string, fallback: ArtifactKind = 'unknown'): ArtifactKind {
   const text = value.toLowerCase();
 
-  if (/\b(html|javascript|js|interactive|component|button|form|screen|page|ui|widget|vue|react|counter|calculator|simulate|simulation|simulator)\b/.test(text)) return 'component';
+  if (/\b(html|javascript|js|interactive|component|button|form|screen|page|ui|widget|vue|react|counter|calculator|simulate|simulation|simulator|explorer|atlas|map)\b/.test(text)) return 'component';
   if (/\b(image|picture|photo|illustration|logo|icon|poster|visual|wallpaper)\b/.test(text)) return 'image';
   if (/\b(video|movie|clip|animation|trailer)\b/.test(text)) return 'video';
   if (/\b(text|copy|poem|story|essay|markdown|explain|write|article|headline)\b/.test(text)) return 'text';
@@ -76,6 +76,340 @@ function createObjectArtifactContent(value: string): ArtifactContent {
     ],
     summary: 'Universal artifact shell. Meaning, capabilities, and connections are model-defined.',
     ports: normalizePorts(),
+  };
+}
+
+function isSpatialWorldPrompt(value: string) {
+  const text = value.toLowerCase();
+  if (/\b(forest|bioregion|watershed|ecology|ecological)\b/.test(text)) return true;
+
+  return (
+    /\b(map|atlas|city|world|explorer)\b/.test(text) &&
+    /\b(nature|wildlife|habitat|green|regenerative|rewild|landscape|river)\b/.test(text)
+  );
+}
+
+function createSpatialWorldArtifactContent(value: string): ArtifactContent {
+  const title = makeArtifactTitle(value);
+  const encodedTitle = JSON.stringify(title).replace(/</g, '\\u003c');
+  const vue = `<template>
+  <main class="spatial-world" :class="'climate-' + climate">
+    <header class="atlas-header">
+      <div>
+        <span class="eyebrow">living atlas</span>
+        <h3>{{ title }}</h3>
+      </div>
+      <div class="harmony-seal" :style="{ '--harmony': harmony + '%' }">
+        <strong>{{ harmony }}</strong><small>harmony</small>
+      </div>
+      <button
+        class="restore"
+        type="button"
+        :disabled="!hasChanges && !selectedRegion"
+        aria-label="Restore the atlas and return to the whole world"
+        @click="restoreWorld"
+      >↺ <span>restore</span></button>
+    </header>
+
+    <section class="atlas-stage" aria-label="Interactive map of six connected regions">
+      <svg
+        class="atlas"
+        viewBox="0 0 640 380"
+        preserveAspectRatio="xMidYMid meet"
+        role="group"
+        aria-label="A living map. Select a named region to explore and change it."
+      >
+        <defs>
+          <radialGradient id="worldGlow" cx="48%" cy="42%">
+            <stop offset="0" stop-color="#d8edaf" stop-opacity=".18" />
+            <stop offset="1" stop-color="#101a16" stop-opacity="0" />
+          </radialGradient>
+          <filter id="softGlow">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        <rect x="4" y="4" width="632" height="372" rx="42" fill="#101916" />
+        <rect x="4" y="4" width="632" height="372" rx="42" fill="url(#worldGlow)" />
+
+        <path class="river" d="M-10 73 C115 111 103 211 237 203 S385 108 482 167 S545 318 654 286" />
+        <g class="corridors" aria-hidden="true">
+          <path d="M143 102 C215 92 251 123 300 105 S403 85 487 108" />
+          <path d="M124 252 C209 221 278 281 365 246 S480 212 541 260" />
+          <path d="M188 158 C244 188 298 189 347 166 S429 150 486 181" />
+        </g>
+
+        <g
+          v-for="region in regions"
+          :key="region.id"
+          class="region"
+          :class="{ selected: selectedId === region.id }"
+          role="button"
+          tabindex="0"
+          :aria-label="region.name + ', canopy ' + region.canopy + ', community ' + region.community"
+          @click="selectRegion(region)"
+          @keydown.enter.prevent="selectRegion(region)"
+          @keydown.space.prevent="selectRegion(region)"
+        >
+          <title>{{ region.name }} — select to explore</title>
+          <path class="region-land" :d="region.path" :fill="regionColor(region)" />
+          <circle
+            class="canopy"
+            :cx="region.cx"
+            :cy="region.cy - 10"
+            :r="12 + region.canopy * .14"
+            :style="{ opacity: .26 + region.canopy / 180 }"
+          />
+          <circle
+            v-for="marker in communityMarkers(region)"
+            :key="marker"
+            class="community"
+            :cx="region.cx + ((marker - 1) % 3) * 10 - 10"
+            :cy="region.cy + 14 + Math.floor((marker - 1) / 3) * 9"
+            r="3.2"
+          />
+          <text class="region-label" :x="region.cx" :y="region.cy - 4" text-anchor="middle">{{ region.name }}</text>
+          <text class="region-reading" :x="region.cx" :y="region.cy + 9" text-anchor="middle">
+            {{ region.canopy }} leaf · {{ region.community }} life
+          </text>
+        </g>
+
+        <g class="landmarks" aria-hidden="true">
+          <path d="M116 62 l8 -15 8 15 z M108 64 h32 v5 h-32z" />
+          <circle cx="300" cy="72" r="7" />
+          <path d="M471 72 h18 v18 h-18z M476 66 h8 v6 h-8z" />
+          <path d="M89 284 q14 -24 28 0 z" />
+          <circle cx="346" cy="302" r="8" />
+          <path d="M536 278 l11 -17 11 17 z" />
+        </g>
+      </svg>
+
+      <div v-if="selectedRegion" class="focus-strip" aria-live="polite">
+        <button class="return" type="button" aria-label="Return to the whole atlas" @click="returnToWhole">←</button>
+        <div class="focus-copy">
+          <strong>{{ selectedRegion.name }}</strong>
+          <small>{{ selectedRegion.canopy }} canopy · {{ selectedRegion.community }} community · {{ selectedRegion.water }} water</small>
+        </div>
+        <div class="domain-actions">
+          <button type="button" @click="rewildSelected"><i>✦</i><span>rewild</span></button>
+          <button type="button" @click="settleSelected"><i>⌂</i><span>settle gently</span></button>
+        </div>
+      </div>
+      <div v-else class="atlas-hint">
+        <span class="climate-mark" aria-hidden="true">{{ climateGlyph }}</span>
+        <span>Touch a region to enter it</span>
+        <small>{{ climate }} climate</small>
+      </div>
+    </section>
+  </main>
+</template>
+
+<script>
+const { computed, onMounted, reactive, ref, watch } = Vue;
+
+const fallbackInputs = reactive({ climate: 'temperate' });
+const dot = globalThis.Dot ?? { inputs: fallbackInputs, emit: () => {} };
+const dotInputs = dot.inputs ?? fallbackInputs;
+const emitDot = typeof dot.emit === 'function' ? dot.emit.bind(dot) : () => {};
+
+export default {
+  setup() {
+    const title = ${encodedTitle};
+    const initialRegions = [
+      { id: 'crown', name: 'Canopy Crown', path: 'M28 38 L198 27 L222 122 L151 166 L31 137 Z', cx: 124, cy: 95, canopy: 86, community: 34, water: 52 },
+      { id: 'commons', name: 'River Commons', path: 'M205 29 L400 34 L419 132 L338 173 L222 122 Z', cx: 308, cy: 96, canopy: 62, community: 68, water: 76 },
+      { id: 'ridge', name: 'Solar Ridge', path: 'M400 34 L610 53 L607 151 L511 176 L419 132 Z', cx: 506, cy: 105, canopy: 48, community: 72, water: 38 },
+      { id: 'moss', name: 'Moss Quarter', path: 'M31 137 L151 166 L219 237 L180 346 L36 326 Z', cx: 119, cy: 248, canopy: 91, community: 27, water: 67 },
+      { id: 'wetland', name: 'Wetland Gate', path: 'M151 166 L338 173 L402 261 L369 351 L180 346 L219 237 Z', cx: 298, cy: 264, canopy: 73, community: 43, water: 92 },
+      { id: 'garden', name: 'Garden District', path: 'M338 173 L511 176 L607 151 L606 327 L369 351 L402 261 Z', cx: 500, cy: 264, canopy: 57, community: 81, water: 58 },
+    ];
+    const regions = reactive(initialRegions.map((region) => ({ ...region })));
+    const selectedId = ref(null);
+    const hasChanges = ref(false);
+    const climate = ref('temperate');
+    const climateInput = computed(() => String(dotInputs.climate ?? '').trim().toLowerCase());
+    const selectedRegion = computed(() => regions.find((region) => region.id === selectedId.value) ?? null);
+    const climateGlyph = computed(() => ({ temperate: '◌', wet: '≈', dry: '☼', cool: '✦' }[climate.value]));
+
+    function vitality(region) {
+      const climateEffect =
+        climate.value === 'wet' ? region.water * .09 :
+        climate.value === 'dry' ? (100 - region.water) * .06 - 7 :
+        climate.value === 'cool' ? region.canopy * .04 :
+        4;
+      const relationshipFit = 100 - Math.abs(region.canopy - region.community) * .48;
+      return Math.max(18, Math.min(100, Math.round((region.canopy + region.water + relationshipFit) / 3 + climateEffect)));
+    }
+
+    const harmony = computed(() => Math.round(regions.reduce((sum, region) => sum + vitality(region), 0) / regions.length));
+    const worldState = computed(() => ({
+      climate: climate.value,
+      harmony: harmony.value,
+      selectedRegion: selectedId.value,
+      regions: regions.map((region) => ({
+        id: region.id,
+        canopy: region.canopy,
+        community: region.community,
+        water: region.water,
+        vitality: vitality(region),
+      })),
+    }));
+
+    watch(climateInput, (next) => {
+      if (/rain|wet|flood|storm/.test(next)) climate.value = 'wet';
+      else if (/dry|drought|heat|hot|arid/.test(next)) climate.value = 'dry';
+      else if (/cold|cool|snow|frost/.test(next)) climate.value = 'cool';
+      else climate.value = 'temperate';
+    }, { immediate: true });
+
+    watch(worldState, (next) => emitDot('worldState', next), { deep: true });
+
+    function regionColor(region) {
+      const score = vitality(region);
+      const hue = 82 + region.canopy * .42;
+      const light = 17 + score * .16;
+      return 'hsl(' + hue + ' 38% ' + light + '%)';
+    }
+
+    function communityMarkers(region) {
+      return Math.max(2, Math.min(6, Math.round(region.community / 16)));
+    }
+
+    function selectRegion(region) {
+      selectedId.value = region.id;
+      emitDot('regionSelected', {
+        id: region.id,
+        name: region.name,
+        canopy: region.canopy,
+        community: region.community,
+        water: region.water,
+      });
+    }
+
+    function rewildSelected() {
+      if (!selectedRegion.value) return;
+      selectedRegion.value.canopy = Math.min(100, selectedRegion.value.canopy + 9);
+      selectedRegion.value.water = Math.min(100, selectedRegion.value.water + 5);
+      selectedRegion.value.community = Math.max(12, selectedRegion.value.community - 3);
+      hasChanges.value = true;
+    }
+
+    function settleSelected() {
+      if (!selectedRegion.value) return;
+      selectedRegion.value.community = Math.min(100, selectedRegion.value.community + 9);
+      selectedRegion.value.canopy = Math.max(18, selectedRegion.value.canopy - 5);
+      selectedRegion.value.water = Math.max(16, selectedRegion.value.water - 2);
+      hasChanges.value = true;
+    }
+
+    function returnToWhole() {
+      selectedId.value = null;
+    }
+
+    function restoreWorld() {
+      regions.forEach((region, index) => Object.assign(region, initialRegions[index]));
+      selectedId.value = null;
+      hasChanges.value = false;
+    }
+
+    onMounted(() => emitDot('worldState', worldState.value));
+
+    return {
+      climate,
+      climateGlyph,
+      communityMarkers,
+      harmony,
+      hasChanges,
+      regions,
+      regionColor,
+      restoreWorld,
+      returnToWhole,
+      rewildSelected,
+      selectedId,
+      selectedRegion,
+      selectRegion,
+      settleSelected,
+      title,
+      vitality,
+    };
+  },
+};
+</script>
+
+<style>
+.spatial-world {
+  --cream: #fff7dc;
+  --leaf: #93e394;
+  display: grid;
+  width: 100%;
+  height: 100vh;
+  min-height: 260px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(8px, 2vh, 14px);
+  padding: clamp(12px, 3.5vw, 22px);
+  overflow: hidden;
+  color: var(--cream);
+  background:
+    radial-gradient(circle at 15% 8%, rgba(132,211,126,.14), transparent 31%),
+    radial-gradient(circle at 84% 82%, rgba(223,181,103,.1), transparent 30%),
+    #0e1512;
+  font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+}
+.atlas-header { z-index: 3; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 10px; }
+.eyebrow { color: rgba(255,247,220,.5); font-size: 9px; font-weight: 850; letter-spacing: .16em; text-transform: uppercase; }
+h3 { margin: 2px 0 0; overflow: hidden; font-size: clamp(15px,4.7vw,25px); line-height: 1.05; letter-spacing: -.035em; text-overflow: ellipsis; white-space: nowrap; }
+.harmony-seal { display: grid; width: 44px; aspect-ratio: 1; place-content: center; border-radius: 50%; background: conic-gradient(var(--leaf) var(--harmony), rgba(255,255,255,.08) 0); text-align: center; box-shadow: inset 0 0 0 5px #172019; }
+.harmony-seal strong { font-size: 12px; line-height: 1; }.harmony-seal small { color: rgba(255,247,220,.48); font-size: 5px; letter-spacing: .08em; text-transform: uppercase; }
+.restore { display: grid; min-width: 42px; min-height: 42px; padding: 4px 7px; place-items: center; border: 1px solid rgba(255,255,255,.12); border-radius: 14px; color: inherit; background: rgba(255,255,255,.04); font-size: 15px; cursor: pointer; }
+.restore span { font-size: 6px; letter-spacing: .08em; text-transform: uppercase; }.restore:disabled { cursor: default; opacity: .25; }
+.atlas-stage { position: relative; min-height: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.1); border-radius: clamp(20px,6vw,38px); background: #101916; isolation: isolate; }
+.atlas { display: block; width: 100%; height: 100%; }
+.river { fill: none; stroke: #6dbac0; stroke-linecap: round; stroke-opacity: .62; stroke-width: 8; transition: stroke-width .45s ease, stroke .45s ease; }
+.climate-wet .river { stroke: #79d4dc; stroke-width: 14; }.climate-dry .river { stroke: #b8a873; stroke-width: 4; stroke-opacity: .48; }.climate-cool .river { stroke: #b8dbe1; }
+.corridors { fill: none; stroke: rgba(239,224,166,.28); stroke-dasharray: 4 9; stroke-linecap: round; stroke-width: 2; }
+.region { cursor: pointer; outline: none; }
+.region-land { stroke: rgba(255,255,255,.14); stroke-width: 2; transition: fill .4s ease, stroke .2s ease, transform .25s ease; transform-box: fill-box; transform-origin: center; }
+.region:hover .region-land, .region:focus-visible .region-land { stroke: var(--cream); stroke-width: 4; transform: scale(.985); }
+.region.selected .region-land { stroke: var(--leaf); stroke-width: 5; filter: url(#softGlow); }
+.canopy { fill: #76d57f; filter: url(#softGlow); pointer-events: none; transition: r .4s ease, opacity .4s ease; }
+.community { fill: #ffd381; stroke: rgba(50,35,18,.55); stroke-width: 1; pointer-events: none; }
+.region-label { fill: var(--cream); font-size: 12px; font-weight: 780; letter-spacing: .01em; pointer-events: none; }
+.region-reading { fill: rgba(255,247,220,.58); font-size: 7px; letter-spacing: .04em; pointer-events: none; }
+.landmarks { fill: #f7d58b; opacity: .72; filter: url(#softGlow); }
+.focus-strip { position: absolute; z-index: 8; right: clamp(7px,2vw,13px); bottom: clamp(7px,2vw,13px); left: clamp(7px,2vw,13px); display: grid; grid-template-columns: auto minmax(0,1fr) auto; min-height: 54px; align-items: center; gap: 9px; padding: 7px; border: 1px solid rgba(255,255,255,.14); border-radius: 18px; background: rgba(10,17,13,.88); box-shadow: 0 8px 30px rgba(0,0,0,.26); backdrop-filter: blur(12px); }
+.return { width: 40px; min-height: 40px; padding: 0; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; color: inherit; background: rgba(255,255,255,.05); cursor: pointer; }
+.focus-copy { min-width: 0; }.focus-copy strong, .focus-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.focus-copy strong { font-size: 12px; }.focus-copy small { margin-top: 3px; color: rgba(255,247,220,.55); font-size: 7px; }
+.domain-actions { display: flex; gap: 5px; }.domain-actions button { display: grid; min-width: 58px; min-height: 40px; padding: 4px 7px; place-items: center; border: 1px solid rgba(255,255,255,.13); border-radius: 13px; color: inherit; background: rgba(147,227,148,.08); cursor: pointer; }.domain-actions i { color: var(--leaf); font-style: normal; font-size: 13px; }.domain-actions span { font-size: 6px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.atlas-hint { position: absolute; z-index: 5; right: 12px; bottom: 10px; display: flex; align-items: center; gap: 7px; color: rgba(255,247,220,.72); font-size: 9px; letter-spacing: .04em; pointer-events: none; }.atlas-hint small { color: rgba(255,247,220,.4); font-size: 7px; text-transform: uppercase; }.climate-mark { display: grid; width: 26px; aspect-ratio: 1; place-content: center; border-radius: 50%; color: #18301d; background: var(--leaf); font-size: 15px; }
+@media (max-height: 340px) {
+  .spatial-world { grid-template-columns: minmax(105px,.48fr) 1.52fr; grid-template-rows: 1fr; gap: 9px; }
+  .atlas-header { grid-template-columns: 1fr auto; align-content: start; }.atlas-header > div:first-child { grid-column: 1 / 3; }.restore span, .harmony-seal small { display: none; }
+  .atlas-stage { grid-column: 2; grid-row: 1; }.focus-strip { min-height: 48px; }.focus-copy small { display: none; }
+}
+@media (max-width: 410px) {
+  .atlas-hint small { display: none; }.domain-actions button { min-width: 48px; }.domain-actions span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+}
+</style>`;
+
+  return {
+    raw: vue,
+    description: value,
+    vue,
+    tags: ['component', 'vue', 'map', 'atlas', 'ecology'],
+    connections: ['climate', 'world state', 'region selection', 'ecological balance'],
+    capabilities: ['explore', 'rewild', 'settle', 'restore', 'connect'],
+    summary: 'Interactive six-region living atlas with direct selection, ecological trade-offs, climate response, and a restorable world state.',
+    ports: {
+      inputs: [{ id: 'climate', label: 'climate', type: 'text', mode: 'state', purpose: 'Changes water, vitality, and atmosphere when connected text describes wet, dry, hot, cool, or temperate conditions.' }],
+      outputs: [
+        { id: 'worldState', label: 'world state', type: 'data', mode: 'state', purpose: 'Emits climate, harmony, selection, and the canopy, community, water, and vitality of all six regions.' },
+        { id: 'regionSelected', label: 'region selected', type: 'event', mode: 'event', purpose: 'Emits the selected region and its current ecological state.' },
+      ],
+    },
   };
 }
 
@@ -380,8 +714,9 @@ h3 { max-width: 28ch; margin: 2px 0 0; overflow: hidden; font-size: clamp(15px, 
   };
 }
 
-function createComponentArtifactContent(value: string): ArtifactContent {
-  if (isFarmEcosystemSimulatorPrompt(value)) return createFarmEcosystemArtifactContent(value);
+function createComponentArtifactContent(value: string, routingContext = value): ArtifactContent {
+  if (isSpatialWorldPrompt(routingContext)) return createSpatialWorldArtifactContent(value);
+  if (isFarmEcosystemSimulatorPrompt(routingContext)) return createFarmEcosystemArtifactContent(value);
 
   const title = makeArtifactTitle(value);
   const encodedTitle = JSON.stringify(title).replace(/</g, '\\u003c');
@@ -597,12 +932,13 @@ export function fakeGenerateArtifact(value: string, previous?: Artifact, preferr
   }
 
   if (kind === 'component') {
+    const routingContext = previous ? `${previous.title} ${previous.prompt} ${value}` : value;
     return {
       kind,
       title,
       purpose: 'Interactive generated component.',
       summary: 'Sandboxed Vue component.',
-      content: createComponentArtifactContent(value),
+      content: createComponentArtifactContent(title, routingContext),
     };
   }
 

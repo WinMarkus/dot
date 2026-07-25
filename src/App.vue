@@ -1293,8 +1293,21 @@ const suggestionCache = ref<Record<string, ArtifactSuggestion[]>>({});
 const suggestionsLoadingId = ref<string | null>(null);
 const creatingSuggestionKey = ref<string | null>(null);
 const queuedSuggestionKeys = ref<string[]>([]);
+type SuggestionPlacement = { angle: number; gap: number };
+const suggestionPlacements = ref<Record<string, SuggestionPlacement>>({});
+const suggestionDragState = ref<{
+  pointerId: number;
+  key: string;
+  startPointerX: number;
+  startPointerY: number;
+  startPosition: Point;
+  startPlacement?: SuggestionPlacement;
+  moved: boolean;
+} | null>(null);
 let suggestionTimer: number | null = null;
 let suggestionRequestToken = 0;
+let suppressedSuggestionClickKey: string | null = null;
+let suggestionClickResetTimer: number | null = null;
 
 const activeSuggestionArtifact = computed(() => {
   const id = selectedArtifactId.value;
@@ -1317,7 +1330,116 @@ const activeSuggestions = computed(() => {
 });
 
 function suggestionKey(sourceId: string, suggestion: ArtifactSuggestion) {
-  return `${sourceId}:${suggestion.kind}:${suggestion.title}`;
+  return `${sourceId}:${suggestion.kind}:${suggestion.title}:${idHash(`${suggestion.prompt}:${suggestion.reason}`)}`;
+}
+
+function setSuggestionPlacement(key: string, placement: SuggestionPlacement) {
+  suggestionPlacements.value = {
+    ...suggestionPlacements.value,
+    [key]: placement,
+  };
+}
+
+function handleSuggestionPointerDown(event: PointerEvent, suggestion: ArtifactSuggestion, index: number) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  if (isGenerating.value || regeneratingArtifactId.value) return;
+
+  const source = activeSuggestionArtifact.value;
+  if (!source) return;
+
+  const key = suggestionKey(source.id, suggestion);
+  const currentPlacement = suggestionPlacements.value[key];
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  suggestionDragState.value = {
+    pointerId: event.pointerId,
+    key,
+    startPointerX: event.clientX,
+    startPointerY: event.clientY,
+    startPosition: ghostSuggestionPosition(source, suggestion, index, activeSuggestions.value.length),
+    startPlacement: currentPlacement ? { ...currentPlacement } : undefined,
+    moved: false,
+  };
+}
+
+function handleSuggestionPointerMove(event: PointerEvent) {
+  const state = suggestionDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  const screenDx = event.clientX - state.startPointerX;
+  const screenDy = event.clientY - state.startPointerY;
+  if (!state.moved && Math.hypot(screenDx, screenDy) > 5) state.moved = true;
+  if (!state.moved) return;
+
+  event.preventDefault();
+  const source = activeSuggestionArtifact.value;
+  if (!source) {
+    suggestionDragState.value = null;
+    return;
+  }
+  const zoom = Math.max(camera.value.zoom, 0.01);
+  setSuggestionPlacementFromPosition(source, state.key, {
+    x: state.startPosition.x + screenDx / zoom,
+    y: state.startPosition.y + screenDy / zoom,
+  });
+}
+
+function releaseSuggestionPointer(event: PointerEvent) {
+  const target = event.currentTarget as HTMLElement;
+  if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
+}
+
+function restoreSuggestionPlacement(
+  state: NonNullable<typeof suggestionDragState.value>,
+) {
+  const nextPlacements = { ...suggestionPlacements.value };
+  if (state.startPlacement) nextPlacements[state.key] = state.startPlacement;
+  else delete nextPlacements[state.key];
+  suggestionPlacements.value = nextPlacements;
+}
+
+function handleSuggestionPointerUp(event: PointerEvent) {
+  const state = suggestionDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  suggestionDragState.value = null;
+  releaseSuggestionPointer(event);
+  if (!state.moved) return;
+
+  suppressedSuggestionClickKey = state.key;
+  if (suggestionClickResetTimer) window.clearTimeout(suggestionClickResetTimer);
+  suggestionClickResetTimer = window.setTimeout(() => {
+    if (suppressedSuggestionClickKey === state.key) suppressedSuggestionClickKey = null;
+    suggestionClickResetTimer = null;
+  }, 0);
+}
+
+function handleSuggestionPointerCancel(event: PointerEvent) {
+  const state = suggestionDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+
+  suggestionDragState.value = null;
+  releaseSuggestionPointer(event);
+  restoreSuggestionPlacement(state);
+}
+
+function handleSuggestionLostPointerCapture(event: PointerEvent) {
+  const state = suggestionDragState.value;
+  if (!state || state.pointerId !== event.pointerId) return;
+  suggestionDragState.value = null;
+  restoreSuggestionPlacement(state);
+}
+
+function handleSuggestionClick(event: MouseEvent, suggestion: ArtifactSuggestion) {
+  const source = activeSuggestionArtifact.value;
+  if (!source) return;
+
+  const key = suggestionKey(source.id, suggestion);
+  if (event.detail > 0 && suppressedSuggestionClickKey === key) {
+    event.preventDefault();
+    suppressedSuggestionClickKey = null;
+    return;
+  }
+  toggleSuggestionQueue(suggestion);
 }
 
 const queuedSuggestions = computed(() => {
@@ -1765,17 +1887,63 @@ async function loadSuggestions(artifactId: string) {
   }
 }
 
-function ghostSuggestionPosition(artifact: Artifact, index: number, total: number) {
+const GHOST_SUGGESTION_RADIUS = 52;
+const GHOST_SUGGESTION_DEFAULT_GAP = 96;
+const GHOST_SUGGESTION_MIN_GAP = 18;
+
+function ghostSuggestionDefaultPlacement(index: number, total: number): SuggestionPlacement {
   const angles = total <= 1 ? [0] : total === 2 ? [-26, 26] : [-40, 0, 40];
-  const angle = ((angles[index] ?? 0) * Math.PI) / 180;
-  const centerX = artifact.x + artifact.width / 2;
-  const centerY = artifact.y + getArtifactRenderHeight(artifact) / 2;
-  const radius = Math.max(artifact.width, getArtifactRenderHeight(artifact)) / 2 + 148;
+  return {
+    angle: ((angles[index] ?? 0) * Math.PI) / 180,
+    gap: GHOST_SUGGESTION_DEFAULT_GAP,
+  };
+}
+
+function artifactRadiusAtAngle(artifact: Artifact, angle: number) {
+  const bounds = artifactRenderedBounds(artifact);
+  const halfWidth = Math.max(bounds.w / 2, 1);
+  const halfHeight = Math.max(bounds.h / 2, 1);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return 1 / Math.sqrt((cos * cos) / (halfWidth * halfWidth) + (sin * sin) / (halfHeight * halfHeight));
+}
+
+function suggestionPositionFromPlacement(artifact: Artifact, placement: SuggestionPlacement) {
+  const center = artifactCenter(artifact);
+  const radius = artifactRadiusAtAngle(artifact, placement.angle) + GHOST_SUGGESTION_RADIUS + placement.gap;
 
   return {
-    x: centerX + Math.cos(angle) * radius,
-    y: centerY + Math.sin(angle) * radius,
+    x: center.x + Math.cos(placement.angle) * radius,
+    y: center.y + Math.sin(placement.angle) * radius,
   };
+}
+
+function ghostSuggestionBasePosition(artifact: Artifact, index: number, total: number) {
+  return suggestionPositionFromPlacement(artifact, ghostSuggestionDefaultPlacement(index, total));
+}
+
+function ghostSuggestionPosition(
+  artifact: Artifact,
+  suggestion: ArtifactSuggestion,
+  index: number,
+  total: number,
+) {
+  const placement =
+    suggestionPlacements.value[suggestionKey(artifact.id, suggestion)] ??
+    ghostSuggestionDefaultPlacement(index, total);
+  return suggestionPositionFromPlacement(artifact, placement);
+}
+
+function setSuggestionPlacementFromPosition(artifact: Artifact, key: string, position: Point) {
+  const center = artifactCenter(artifact);
+  const dx = position.x - center.x;
+  const dy = position.y - center.y;
+  const angle = Math.atan2(dy, dx);
+  const gap = Math.max(
+    GHOST_SUGGESTION_MIN_GAP,
+    Math.hypot(dx, dy) - artifactRadiusAtAngle(artifact, angle) - GHOST_SUGGESTION_RADIUS,
+  );
+  setSuggestionPlacement(key, { angle, gap });
 }
 
 function ghostWeavePosition(artifact: Artifact) {
@@ -1797,7 +1965,7 @@ async function executeQueuedSuggestions() {
   try {
     const batches = await Promise.all(
       queued.map(async ({ suggestion, index }) => {
-        const position = ghostSuggestionPosition(source, index, activeSuggestions.value.length);
+        const position = ghostSuggestionPosition(source, suggestion, index, activeSuggestions.value.length);
         const generated = await requestGeneratedArtifacts(suggestion.prompt, 'create', undefined, suggestion.kind, [
           { meaning: suggestion.reason.toLowerCase().replace(/\.$/, '').slice(0, 60), kind: source.kind, title: source.title, content: artifactContentSnippet(source) },
         ]);
@@ -1819,6 +1987,9 @@ async function executeQueuedSuggestions() {
     });
 
     const queuedKeys = new Set(queued.map(({ key }) => key));
+    const nextSuggestionPlacements = { ...suggestionPlacements.value };
+    queuedKeys.forEach((key) => delete nextSuggestionPlacements[key]);
+    suggestionPlacements.value = nextSuggestionPlacements;
     const remaining = (suggestionCache.value[source.id] ?? []).filter((item) => !queuedKeys.has(suggestionKey(source.id, item)));
     if (remaining.length) {
       suggestionCache.value = { ...suggestionCache.value, [source.id]: remaining };
@@ -1838,6 +2009,7 @@ async function executeQueuedSuggestions() {
 
 watch(selectedArtifactId, (id) => {
   if (runningArtifactId.value && runningArtifactId.value !== id) closeArtifactRun(false);
+  suggestionDragState.value = null;
   clearQueuedSuggestions();
   if (id) scheduleSuggestions(id);
   void nextTick(syncSelectedArtifactMeasurement);
@@ -2860,6 +3032,7 @@ onUnmounted(() => {
   selectedCardResizeObserver?.disconnect();
   clearLassoArmTimer();
   if (suggestionTimer) window.clearTimeout(suggestionTimer);
+  if (suggestionClickResetTimer) window.clearTimeout(suggestionClickResetTimer);
   if (tendrilRaf) cancelAnimationFrame(tendrilRaf);
   connectionPulseTimers.forEach((timerId) => window.clearTimeout(timerId));
   deletionTimers.forEach((timerId) => window.clearTimeout(timerId));
@@ -3319,8 +3492,8 @@ onUnmounted(() => {
           :key="`seed-${seedIndex}`"
           class="ghost-seed"
           :style="{
-            left: `${ghostSuggestionPosition(selectedTopLevelArtifact, seedIndex - 1, 3).x}px`,
-            top: `${ghostSuggestionPosition(selectedTopLevelArtifact, seedIndex - 1, 3).y}px`,
+            left: `${ghostSuggestionBasePosition(selectedTopLevelArtifact, seedIndex - 1, 3).x}px`,
+            top: `${ghostSuggestionBasePosition(selectedTopLevelArtifact, seedIndex - 1, 3).y}px`,
             '--ghost-delay': `${(seedIndex - 1) * 240}ms`,
           }"
         />
@@ -3328,7 +3501,7 @@ onUnmounted(() => {
 
       <button
         v-for="(suggestion, index) in activeSuggestions"
-        :key="`${activeSuggestionArtifact?.id}-${suggestion.title}`"
+        :key="suggestionKey(activeSuggestionArtifact!.id, suggestion)"
         class="ghost-suggestion"
         :class="{
           'ghost-suggestion--queued': queuedSuggestionKeys.includes(suggestionKey(activeSuggestionArtifact!.id, suggestion)),
@@ -3338,20 +3511,24 @@ onUnmounted(() => {
           'ghost-suggestion--waiting':
             creatingSuggestionKey &&
             !(creatingSuggestionKey === `${activeSuggestionArtifact?.id}:batch` && queuedSuggestionKeys.includes(suggestionKey(activeSuggestionArtifact!.id, suggestion))),
+          'ghost-suggestion--dragging':
+            suggestionDragState?.key === suggestionKey(activeSuggestionArtifact!.id, suggestion),
         }"
         type="button"
         :title="suggestion.reason"
-        :aria-label="`Queue suggested artifact: ${suggestion.title}`"
+        :aria-label="`Suggested artifact: ${suggestion.title}. Drag to move; activate to queue.`"
         :style="{
-          left: `${ghostSuggestionPosition(activeSuggestionArtifact!, index, activeSuggestions.length).x}px`,
-          top: `${ghostSuggestionPosition(activeSuggestionArtifact!, index, activeSuggestions.length).y}px`,
+          left: `${ghostSuggestionPosition(activeSuggestionArtifact!, suggestion, index, activeSuggestions.length).x}px`,
+          top: `${ghostSuggestionPosition(activeSuggestionArtifact!, suggestion, index, activeSuggestions.length).y}px`,
           '--ghost-delay': `${index * 160}ms`,
         }"
-        @pointerdown.stop
-        @pointermove.stop
-        @pointerup.stop
+        @pointerdown.stop="handleSuggestionPointerDown($event, suggestion, index)"
+        @pointermove.stop="handleSuggestionPointerMove"
+        @pointerup.stop="handleSuggestionPointerUp"
+        @pointercancel.stop="handleSuggestionPointerCancel"
+        @lostpointercapture.stop="handleSuggestionLostPointerCapture"
         @dblclick.stop
-        @click.stop="toggleSuggestionQueue(suggestion)"
+        @click.stop="handleSuggestionClick($event, suggestion)"
       >
         <span>{{ suggestion.title }}</span>
         <small>{{ suggestion.kind }}</small>

@@ -63,7 +63,7 @@ function shouldIgnoreTouchStart(event: TouchEvent) {
 
   return Boolean(
     target.closest(
-      '.command-bar, .model-dock, .model-picker, .github-save-dock, .canvas-help, .theme-dots, .inspector-panel, input, textarea, select',
+      '.command-bar, .model-dock, .model-picker, .github-save-dock, .canvas-help, .theme-dots, .inspector-panel, .ghost-suggestion, input, textarea, select',
     ),
   );
 }
@@ -75,6 +75,7 @@ function clearSinglePointerDragStates(state: DotSetupState) {
   state.deletedMarkerDragState = null;
   state.inspectorDragState = null;
   state.connectDragState = null;
+  state.suggestionDragState = null;
   state.lassoState = null;
   state.constellation = null;
   state.dropTargetArtifactId = null;

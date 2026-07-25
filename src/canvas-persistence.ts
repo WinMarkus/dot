@@ -114,6 +114,7 @@ function clearTransientMotionState(state: DotSetupState) {
   state.deletedMarkerDragState = null;
   state.inspectorDragState = null;
   state.connectDragState = null;
+  state.suggestionDragState = null;
   state.lassoState = null;
   state.constellation = null;
   state.dropTargetArtifactId = null;

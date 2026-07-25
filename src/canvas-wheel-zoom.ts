@@ -39,6 +39,7 @@ function screenToWorld(point: Point, camera: CameraState): Point {
 }
 
 function shouldSkip(event: WheelEvent) {
+  if (document.documentElement.classList.contains('artifact-run-open')) return true;
   const target = event.target;
   if (!(target instanceof HTMLElement)) return true;
   return Boolean(target.closest('.model-picker, .canvas-help__panel, .inspector-panel, .image-lightbox, .artifact-preview-lightbox, textarea, select'));

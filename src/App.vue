@@ -112,6 +112,9 @@ const forkAnimationTimers = new Map<string, number>();
 
 const selectedArtifactId = ref<string | null>(null);
 const activeActionArtifactId = ref<string | null>(null);
+const runningArtifactId = ref<string | null>(null);
+const viewportSize = ref<Viewport>(getViewport());
+const viewportOffset = ref<Point>(getViewportOffset());
 const inspectedArtifactId = ref<string | null>(null);
 const dropTargetArtifactId = ref<string | null>(null);
 
@@ -213,7 +216,18 @@ const inspectorStyle = computed(() => {
 });
 
 function getViewport(): Viewport {
-  return { width: window.innerWidth, height: window.innerHeight };
+  const visualViewport = window.visualViewport;
+  return {
+    width: visualViewport?.width ?? window.innerWidth,
+    height: visualViewport?.height ?? window.innerHeight,
+  };
+}
+
+function getViewportOffset(): Point {
+  return {
+    x: window.visualViewport?.offsetLeft ?? 0,
+    y: window.visualViewport?.offsetTop ?? 0,
+  };
 }
 
 function screenToWorld(point: Point): Point {
@@ -1823,6 +1837,7 @@ async function executeQueuedSuggestions() {
 }
 
 watch(selectedArtifactId, (id) => {
+  if (runningArtifactId.value && runningArtifactId.value !== id) closeArtifactRun(false);
   clearQueuedSuggestions();
   if (id) scheduleSuggestions(id);
   void nextTick(syncSelectedArtifactMeasurement);
@@ -2093,8 +2108,128 @@ function handleDotPointerUp(event: PointerEvent) {
   }
 }
 
+function artifactRunStyle(artifact: Artifact) {
+  if (runningArtifactId.value !== artifact.id) return {};
+
+  const margin = viewportSize.value.width <= 760 ? 10 : 28;
+  const zoom = Math.max(camera.value.zoom, 0.01);
+  const targetLeft = viewportOffset.value.x + margin;
+  const targetTop = viewportOffset.value.y + margin;
+  return {
+    '--artifact-run-left': `${(targetLeft - camera.value.x) / zoom}px`,
+    '--artifact-run-top': `${(targetTop - camera.value.y) / zoom}px`,
+    '--artifact-run-width': `${Math.max(1, viewportSize.value.width - margin * 2)}px`,
+    '--artifact-run-height': `${Math.max(1, viewportSize.value.height - margin * 2)}px`,
+    '--artifact-run-inverse-zoom': String(1 / zoom),
+  };
+}
+
+const RUN_INERT_OWNER = 'data-dot-run-inert-owned';
+
+function setRunBackgroundInert(active: boolean, artifactId?: string) {
+  if (!active) {
+    document.querySelectorAll(`[${RUN_INERT_OWNER}]`).forEach((element) => {
+      element.removeAttribute('inert');
+      element.removeAttribute(RUN_INERT_OWNER);
+    });
+    return;
+  }
+
+  const card = artifactId ? artifactCardElements.get(artifactId) : null;
+  const workspace = card?.closest<HTMLElement>('.workspace');
+  const world = card?.parentElement;
+  if (!card || !workspace || !world) return;
+  const appRoot = workspace.closest<HTMLElement>('#app');
+
+  const backgroundElements = [
+    ...(appRoot ? Array.from(document.body.children).filter((element) => element !== appRoot) : []),
+    ...Array.from(workspace.children).filter((element) => element !== world),
+    ...Array.from(world.children).filter((element) => element !== card),
+  ];
+
+  backgroundElements.forEach((element) => {
+    if (element.hasAttribute('inert')) return;
+    element.setAttribute('inert', '');
+    element.setAttribute(RUN_INERT_OWNER, '');
+  });
+}
+
+function focusRunningArtifact(artifactId: string) {
+  const card = artifactCardElements.get(artifactId);
+  const focusTarget = card?.querySelector<HTMLButtonElement>('.artifact-run-close') ?? card;
+  focusTarget?.focus({ preventScroll: true });
+}
+
+function handleRunFocusIn(event: FocusEvent) {
+  const artifactId = runningArtifactId.value;
+  if (!artifactId) return;
+
+  const card = artifactCardElements.get(artifactId);
+  if (!card || (event.target instanceof Node && card.contains(event.target))) return;
+  focusRunningArtifact(artifactId);
+}
+
+function openArtifactRun(artifact: Artifact) {
+  if (artifact.kind !== 'component' || deletingArtifactIds.value.includes(artifact.id)) return;
+
+  dismissConstellation();
+  closeInspector();
+  weaveSourceId.value = null;
+  connectDragState.value = null;
+  dropTargetArtifactId.value = null;
+  isDotActive.value = false;
+  resetPromptMode();
+  selectedArtifactId.value = artifact.id;
+  runningArtifactId.value = artifact.id;
+  document.documentElement.classList.add('artifact-run-open');
+
+  void nextTick(() => {
+    if (runningArtifactId.value !== artifact.id) return;
+    setRunBackgroundInert(true, artifact.id);
+    focusRunningArtifact(artifact.id);
+  });
+}
+
+function closeArtifactRun(restoreFocus = true) {
+  const artifactId = runningArtifactId.value;
+  if (!artifactId) return;
+
+  setRunBackgroundInert(false);
+  runningArtifactId.value = null;
+  document.documentElement.classList.remove('artifact-run-open');
+  if (restoreFocus) {
+    void nextTick(() => artifactCardElements.get(artifactId)?.focus({ preventScroll: true }));
+  }
+}
+
+function requestArtifactOpen(artifact: Artifact, origin?: Element) {
+  document.dispatchEvent(
+    new CustomEvent('dot:open-artifact', {
+      detail: { artifactId: artifact.id, origin },
+    }),
+  );
+}
+
+function handleArtifactOpenRequest(event: Event) {
+  const detail = (event as CustomEvent<{ artifactId?: string }>).detail;
+  if (!detail?.artifactId) return;
+  const artifact = artifacts.value.find((item) => item.id === detail.artifactId);
+  if (artifact?.kind !== 'component') return;
+
+  // Component run mode keeps the original iframe alive inside the original
+  // bubble. Stop the generic preview listener from mounting a second copy,
+  // which would reset local state and could emit duplicate connection values.
+  event.stopImmediatePropagation();
+  openArtifactRun(artifact);
+}
+
 function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
   if (deletingArtifactIds.value.includes(artifact.id) || artifact.parentId) return;
+
+  if (runningArtifactId.value === artifact.id) {
+    event.stopPropagation();
+    return;
+  }
 
   if (weaveSourceId.value && weaveSourceId.value !== artifact.id) {
     const sourceId = weaveSourceId.value;
@@ -2125,7 +2260,21 @@ function handleArtifactPointerDown(event: PointerEvent, artifact: Artifact) {
 }
 
 function handleArtifactKeydown(event: KeyboardEvent, artifact: Artifact) {
-  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const target = event.target;
+  if (
+    target !== event.currentTarget &&
+    target instanceof Element &&
+    target.closest('button, input, textarea, select, [contenteditable="true"]')
+  ) {
+    return;
+  }
+
+  const key = event.key.toLowerCase();
+  const isActivation = event.key === 'Enter' || event.key === ' ';
+
+  if (!isActivation && selectedArtifactId.value !== artifact.id) return;
+  if (!isActivation && !['e', 'i', 'f', 'delete', 'backspace'].includes(key)) return;
+
   event.preventDefault();
   event.stopPropagation();
 
@@ -2137,7 +2286,18 @@ function handleArtifactKeydown(event: KeyboardEvent, artifact: Artifact) {
     return;
   }
 
+  if (isActivation && selectedArtifactId.value === artifact.id) {
+    requestArtifactOpen(artifact, event.currentTarget as Element);
+    return;
+  }
+
   selectedArtifactId.value = artifact.id;
+
+  if (isActivation) return;
+  if (key === 'e') startPromptArtifact(artifact);
+  if (key === 'i') inspectArtifact(artifact);
+  if (key === 'f') forkArtifact(artifact);
+  if (key === 'delete' || key === 'backspace') deleteArtifact(artifact);
 }
 
 function handleArtifactPointerMove(event: PointerEvent) {
@@ -2272,6 +2432,12 @@ function handleInspectorPointerUp(event: PointerEvent) {
 function handleWorkspacePointerDown(event: PointerEvent) {
   if (!isWorkspaceGestureTarget(event)) return;
 
+  if (runningArtifactId.value) {
+    event.preventDefault();
+    closeArtifactRun();
+    return;
+  }
+
   const target = event.currentTarget as HTMLElement;
   target.setPointerCapture(event.pointerId);
 
@@ -2390,6 +2556,7 @@ function handleWorkspaceDoubleClick(event: MouseEvent) {
 
 function handleWheel(event: WheelEvent) {
   event.preventDefault();
+  if (runningArtifactId.value) return;
   zoomAt({ x: event.clientX, y: event.clientY }, camera.value.zoom * (event.deltaY > 0 ? 0.92 : 1.08));
 }
 
@@ -2577,13 +2744,6 @@ function clearDeletedMarkers() {
   deletedMarkers.value = [];
 }
 
-function toggleArtifactActions(artifact: Artifact) {
-  if (deletingArtifactIds.value.includes(artifact.id)) return;
-
-  selectedArtifactId.value = artifact.id;
-  activeActionArtifactId.value = activeActionArtifactId.value === artifact.id ? null : artifact.id;
-}
-
 function closeInspector() {
   inspectedArtifactId.value = null;
   inspectorEditPrompt.value = '';
@@ -2622,6 +2782,11 @@ function handleKeydown(event: KeyboardEvent) {
   const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
 
   if (event.key === 'Escape') {
+    if (runningArtifactId.value) {
+      event.preventDefault();
+      closeArtifactRun();
+      return;
+    }
     if (weaveSourceId.value) {
       weaveSourceId.value = null;
       return;
@@ -2640,9 +2805,16 @@ function handleKeydown(event: KeyboardEvent) {
   }
 
   if (isTyping) return;
+  if (runningArtifactId.value) return;
 
   if (event.key.toLowerCase() === 'f') fitAll();
   if (event.key === '0') resetCamera();
+}
+
+function handleViewportResize() {
+  viewportSize.value = getViewport();
+  viewportOffset.value = getViewportOffset();
+  syncSelectedArtifactMeasurement();
 }
 
 onMounted(() => {
@@ -2650,12 +2822,19 @@ onMounted(() => {
     getInputs: componentInputSnapshot,
     onEmit: handleComponentEmit,
     onReady: (artifactId) => setComponentRuntimeError(artifactId),
+    onCloseRequest: (artifactId) => {
+      if (runningArtifactId.value === artifactId) closeArtifactRun();
+    },
     onError: (artifactId, message) => setComponentRuntimeError(artifactId, message),
   });
   resetCamera();
   window.addEventListener('keydown', handleKeydown);
   window.addEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
-  window.addEventListener('resize', syncSelectedArtifactMeasurement);
+  window.addEventListener('resize', handleViewportResize);
+  window.visualViewport?.addEventListener('resize', handleViewportResize);
+  window.visualViewport?.addEventListener('scroll', handleViewportResize);
+  document.addEventListener('focusin', handleRunFocusIn);
+  document.addEventListener('dot:open-artifact', handleArtifactOpenRequest, true);
   void fetchModelCatalog().then((catalog) => {
     modelCatalog.value = catalog;
   });
@@ -2671,7 +2850,13 @@ onUnmounted(() => {
   runtimeConnectionRegistrations.clear();
   window.removeEventListener('keydown', handleKeydown);
   window.removeEventListener('pointerdown', handleGlobalPointerDownForPicker, true);
-  window.removeEventListener('resize', syncSelectedArtifactMeasurement);
+  window.removeEventListener('resize', handleViewportResize);
+  window.visualViewport?.removeEventListener('resize', handleViewportResize);
+  window.visualViewport?.removeEventListener('scroll', handleViewportResize);
+  document.removeEventListener('focusin', handleRunFocusIn);
+  document.removeEventListener('dot:open-artifact', handleArtifactOpenRequest, true);
+  setRunBackgroundInert(false);
+  document.documentElement.classList.remove('artifact-run-open');
   selectedCardResizeObserver?.disconnect();
   clearLassoArmTimer();
   if (suggestionTimer) window.clearTimeout(suggestionTimer);
@@ -2689,6 +2874,7 @@ onUnmounted(() => {
       'workspace--panning': Boolean(panState),
       'workspace--lassoing': Boolean(lassoState?.armed),
       'workspace--weave-targeting': Boolean(weaveSourceId),
+      'workspace--artifact-running': Boolean(runningArtifactId),
     }"
     :style="gridStyle"
     aria-label="Dot creation canvas"
@@ -2926,6 +3112,7 @@ onUnmounted(() => {
           'artifact-card--lasso-candidate': lassoCandidateArtifactIds.includes(artifact.id),
           'artifact-card--constellation-source': activeConstellation?.artifactIds.includes(artifact.id),
           'artifact-card--runtime-error': Boolean(artifactRuntimeIssue(artifact.id)),
+          'artifact-card--running': runningArtifactId === artifact.id,
           },
         ]"
         :style="{
@@ -2935,41 +3122,51 @@ onUnmounted(() => {
           minHeight: `${getArtifactRenderHeight(artifact)}px`,
           '--bubble-growth': getChildArtifacts(artifact.id).length,
           ...artifactOrganicStyle(artifact),
+          ...artifactRunStyle(artifact),
         }"
         :data-artifact-id="artifact.id"
         tabindex="0"
-        aria-label="Generated artifact. Drag to move."
+        :role="runningArtifactId === artifact.id ? 'dialog' : undefined"
+        :aria-modal="runningArtifactId === artifact.id ? 'true' : undefined"
+        :aria-label="
+          runningArtifactId === artifact.id
+            ? `${artifact.title}. Live component run mode.`
+            : artifact.kind === 'component'
+              ? `${artifact.title}. Drag to move. Select, then activate again to run.`
+              : `${artifact.title}. Drag to move.`
+        "
         @pointerdown="handleArtifactPointerDown($event, artifact)"
         @pointermove="handleArtifactPointerMove"
         @pointerup="handleArtifactPointerUp"
         @keydown="handleArtifactKeydown($event, artifact)"
+        @contextmenu.stop.prevent="inspectArtifact(artifact)"
       >
-        <div
-          v-if="selectedArtifactId === artifact.id && !deletingArtifactIds.includes(artifact.id)"
-          class="artifact-action-system"
-          :class="{ 'artifact-action-system--open': activeActionArtifactId === artifact.id }"
-          aria-label="Artifact actions"
+        <button
+          v-if="artifact.kind === 'component' && selectedArtifactId === artifact.id && runningArtifactId !== artifact.id"
+          class="artifact-bloom-trigger"
+          type="button"
+          aria-label="Bloom this component into live run mode"
           @pointerdown.stop
           @pointermove.stop
           @pointerup.stop
-          @click.stop
+          @click.stop="requestArtifactOpen(artifact)"
         >
-          <button class="artifact-action-root" type="button" aria-label="Show artifact actions" @click="toggleArtifactActions(artifact)">
-            <span />
-          </button>
-          <button class="artifact-action artifact-action--inspect" type="button" data-label="inspect" aria-label="Inspect artifact" @click="inspectArtifact(artifact)">
-            i
-          </button>
-          <button class="artifact-action artifact-action--edit" type="button" data-label="prompt" aria-label="Prompt this artifact" @click="startPromptArtifact(artifact)">
-            ✎
-          </button>
-          <button class="artifact-action artifact-action--fork" type="button" data-label="fork" aria-label="Fork artifact" @click="forkArtifact(artifact)">
-            ⟡
-          </button>
-          <button class="artifact-action artifact-action--delete" type="button" data-label="delete" aria-label="Remove artifact" @click="deleteArtifact(artifact)">
-            ×
-          </button>
-        </div>
+          <span class="artifact-bloom-trigger__seed" aria-hidden="true"><i /><i /><i /></span>
+          <span class="artifact-bloom-trigger__label">run live</span>
+        </button>
+
+        <button
+          v-if="runningArtifactId === artifact.id"
+          class="artifact-run-close"
+          type="button"
+          aria-label="Return component to the canvas"
+          @pointerdown.stop
+          @pointermove.stop
+          @pointerup.stop
+          @click.stop="closeArtifactRun()"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
 
         <div class="artifact-card__eyebrow">
           {{ regeneratingArtifactId === artifact.id ? 'regenerating' : artifact.kind }} · {{ artifact.createdAt }}
@@ -3008,6 +3205,8 @@ onUnmounted(() => {
               class="component-frame"
               title="Sandboxed generated component"
               sandbox="allow-scripts"
+              :scrolling="runningArtifactId === artifact.id ? 'auto' : 'no'"
+              :tabindex="runningArtifactId === artifact.id ? 0 : -1"
               :data-dot-artifact-id="artifact.id"
               :srcdoc="createComponentSrcDoc(artifact.content)"
             />
@@ -3273,7 +3472,11 @@ onUnmounted(() => {
       <div class="canvas-help__panel" role="tooltip">
         <span>wheel zoom</span>
         <span>drag background pan</span>
+        <span>second tap blooms a component</span>
         <span>select + halo weave</span>
+        <span>right-click opens care</span>
+        <span>selected: E edit · I inspect · F fork</span>
+        <span>delete composts · escape folds</span>
         <span>tendrils carry values</span>
         <span>breathe absorbs changes</span>
         <span>F fit</span>

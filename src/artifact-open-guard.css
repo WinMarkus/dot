@@ -12,6 +12,7 @@
 }
 
 .artifact-card--selected[data-open-suppressed="true"] .artifact-action-system,
+.artifact-card--selected[data-open-suppressed="true"] .artifact-bloom-trigger,
 .artifact-card--selected[data-open-suppressed="true"] .artifact-content,
 .artifact-card--selected[data-open-suppressed="true"] .artifact-card__eyebrow {
   display: none;

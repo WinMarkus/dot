@@ -14,6 +14,7 @@ export type DotComponentHostOptions = {
   getInputs: (artifactId: string) => { inputs: Record<string, unknown>; revision: number };
   onEmit: (artifactId: string, portId: string, value: unknown) => void;
   onReady?: (artifactId: string) => void;
+  onCloseRequest?: (artifactId: string) => void;
   onError?: (artifactId: string, message: string) => void;
 };
 
@@ -47,6 +48,12 @@ function serializableClone(value: unknown) {
       return undefined;
     }
   }
+}
+
+function clampFrameMeasurement(value: unknown, minimum: number, maximum: number) {
+  const number = typeof value === 'number' ? value : Number.NaN;
+  if (!Number.isFinite(number)) return null;
+  return Math.min(maximum, Math.max(minimum, Math.ceil(number)));
 }
 
 export class DotComponentHost {
@@ -140,6 +147,26 @@ export class DotComponentHost {
 
     if (message.type === 'dot:emit' && typeof message.portId === 'string') {
       this.#options.onEmit(session.artifactId, message.portId.slice(0, 80), message.value);
+      return;
+    }
+
+    if (message.type === 'dot:resize') {
+      const width = clampFrameMeasurement(message.width, 1, 4096);
+      const height = clampFrameMeasurement(message.height, 150, 2400);
+      if (width === null || height === null) return;
+      if (session.iframe.closest('.artifact-card--running')) return;
+
+      // Components know the size of their own living surface. Keep the
+      // measurement as a CSS variable instead of an inline height so the calm
+      // canvas preview and the full run habitat can interpret it differently.
+      session.iframe.style.setProperty('--dot-component-content-width', `${width}px`);
+      session.iframe.style.setProperty('--dot-component-content-height', `${height}px`);
+      session.iframe.dataset.dotContentHeight = String(height);
+      return;
+    }
+
+    if (message.type === 'dot:close-request') {
+      this.#options.onCloseRequest?.(session.artifactId);
       return;
     }
 

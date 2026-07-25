@@ -1,4 +1,3 @@
-import { createComponentSrcDoc } from './component-srcdoc';
 import type { ArtifactContent } from './types';
 
 type ArtifactLike = {
@@ -11,12 +10,22 @@ type ArtifactLike = {
 type DotSetupState = Record<string, unknown>;
 
 const LIGHTBOX_CLASS = 'artifact-preview-lightbox';
+const LIGHTBOX_INERT_OWNER = 'data-dot-preview-inert-owned';
 
 let lightbox: HTMLElement | null = null;
 let titleEl: HTMLElement | null = null;
 let bodyEl: HTMLElement | null = null;
+let eyebrowEl: HTMLElement | null = null;
+let previouslyFocused: HTMLElement | null = null;
 let stateRef: DotSetupState | null = null;
-let pointerState: { card: HTMLElement; pointerId: number; startX: number; startY: number; moved: boolean } | null = null;
+let pointerState: {
+  card: HTMLElement;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  moved: boolean;
+  wasSelected: boolean;
+} | null = null;
 
 function getSetupState(rootInstance: unknown): DotSetupState | null {
   const instance = rootInstance as { $?: { setupState?: DotSetupState } } | null;
@@ -67,20 +76,24 @@ function readableText(content: ArtifactContent) {
 }
 
 function ensureLightbox() {
-  if (lightbox && titleEl && bodyEl) return { lightbox, titleEl, bodyEl };
+  if (lightbox && titleEl && bodyEl && eyebrowEl) return { lightbox, titleEl, bodyEl, eyebrowEl };
 
   lightbox = document.createElement('div');
   lightbox.className = LIGHTBOX_CLASS;
   lightbox.setAttribute('role', 'dialog');
   lightbox.setAttribute('aria-modal', 'true');
-  lightbox.setAttribute('aria-label', 'Large artifact preview');
+  lightbox.setAttribute('aria-labelledby', 'artifact-preview-lightbox-title');
+  lightbox.setAttribute('aria-hidden', 'true');
+  lightbox.setAttribute('inert', '');
   lightbox.innerHTML = `
     <button class="artifact-preview-lightbox__backdrop" type="button" aria-label="Close preview"></button>
-    <section class="artifact-preview-lightbox__shell">
+    <section class="artifact-preview-lightbox__shell" tabindex="-1">
       <header class="artifact-preview-lightbox__header">
-        <span class="artifact-preview-lightbox__eyebrow">preview</span>
-        <strong class="artifact-preview-lightbox__title"></strong>
-        <button class="artifact-preview-lightbox__close" type="button" aria-label="Close preview">×</button>
+        <span class="artifact-preview-lightbox__eyebrow"><i aria-hidden="true"></i><span>preview</span></span>
+        <strong class="artifact-preview-lightbox__title" id="artifact-preview-lightbox-title"></strong>
+        <button class="artifact-preview-lightbox__close" type="button" aria-label="Fold back into the canvas">
+          <span aria-hidden="true">×</span><small>fold</small>
+        </button>
       </header>
       <div class="artifact-preview-lightbox__body"></div>
     </section>
@@ -88,6 +101,7 @@ function ensureLightbox() {
 
   titleEl = lightbox.querySelector('.artifact-preview-lightbox__title');
   bodyEl = lightbox.querySelector('.artifact-preview-lightbox__body');
+  eyebrowEl = lightbox.querySelector('.artifact-preview-lightbox__eyebrow span');
   document.body.appendChild(lightbox);
 
   lightbox.addEventListener('click', (event) => {
@@ -95,7 +109,35 @@ function ensureLightbox() {
     if (target?.closest('.artifact-preview-lightbox__close, .artifact-preview-lightbox__backdrop')) closeLightbox();
   });
 
-  return { lightbox, titleEl: titleEl!, bodyEl: bodyEl! };
+  return { lightbox, titleEl: titleEl!, bodyEl: bodyEl!, eyebrowEl: eyebrowEl! };
+}
+
+function setLightboxBackgroundInert(active: boolean) {
+  if (!lightbox) return;
+
+  if (!active) {
+    document.querySelectorAll(`[${LIGHTBOX_INERT_OWNER}]`).forEach((element) => {
+      element.removeAttribute('inert');
+      element.removeAttribute(LIGHTBOX_INERT_OWNER);
+    });
+    return;
+  }
+
+  Array.from(document.body.children).forEach((element) => {
+    if (element === lightbox || element.hasAttribute('inert')) return;
+    element.setAttribute('inert', '');
+    element.setAttribute(LIGHTBOX_INERT_OWNER, '');
+  });
+}
+
+function focusLightbox() {
+  lightbox?.querySelector<HTMLElement>('.artifact-preview-lightbox__shell')?.focus({ preventScroll: true });
+}
+
+function handleLightboxFocusIn(event: FocusEvent) {
+  if (!lightbox?.classList.contains('artifact-preview-lightbox--open')) return;
+  if (event.target instanceof Node && lightbox.contains(event.target)) return;
+  focusLightbox();
 }
 
 function appendReader(body: HTMLElement, content: ArtifactContent) {
@@ -141,22 +183,32 @@ function appendVideoPreview(body: HTMLElement, content: ArtifactContent) {
   body.appendChild(section);
 }
 
-function openArtifactPreview(artifact: ArtifactLike) {
+function setBloomOrigin(origin?: Element | null) {
+  if (!lightbox || !origin) {
+    lightbox?.style.setProperty('--bloom-origin-x', '50%');
+    lightbox?.style.setProperty('--bloom-origin-y', '50%');
+    return;
+  }
+
+  const bounds = origin.getBoundingClientRect();
+  const x = ((bounds.left + bounds.width / 2) / Math.max(window.innerWidth, 1)) * 100;
+  const y = ((bounds.top + bounds.height / 2) / Math.max(window.innerHeight, 1)) * 100;
+  lightbox.style.setProperty('--bloom-origin-x', `${Math.max(4, Math.min(96, x))}%`);
+  lightbox.style.setProperty('--bloom-origin-y', `${Math.max(4, Math.min(96, y))}%`);
+}
+
+function openArtifactPreview(artifact: ArtifactLike, origin?: Element | null) {
   const parts = ensureLightbox();
   const content = artifact.content ?? { raw: '' };
   const title = artifact.title || 'Artifact preview';
+  previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  setBloomOrigin(origin);
   parts.titleEl.textContent = title;
+  parts.eyebrowEl.textContent = 'preview';
   parts.bodyEl.innerHTML = '';
+  parts.lightbox.scrollTop = 0;
 
-  if (artifact.kind === 'component') {
-    const iframe = document.createElement('iframe');
-    iframe.className = 'artifact-preview-lightbox__component-frame';
-    iframe.title = title;
-    iframe.sandbox.add('allow-scripts');
-    if (artifact.id) iframe.dataset.dotArtifactId = artifact.id;
-    iframe.srcdoc = createComponentSrcDoc(content);
-    parts.bodyEl.appendChild(iframe);
-  } else if (artifact.kind === 'object') {
+  if (artifact.kind === 'object') {
     appendObjectPreview(parts.bodyEl, content);
   } else if (artifact.kind === 'video') {
     appendVideoPreview(parts.bodyEl, content);
@@ -165,17 +217,27 @@ function openArtifactPreview(artifact: ArtifactLike) {
   }
 
   parts.lightbox.classList.add('artifact-preview-lightbox--open');
+  parts.lightbox.removeAttribute('inert');
+  parts.lightbox.setAttribute('aria-hidden', 'false');
+  setLightboxBackgroundInert(true);
   document.documentElement.classList.add('artifact-preview-lightbox-open');
-  parts.lightbox.querySelector<HTMLButtonElement>('.artifact-preview-lightbox__close')?.focus({ preventScroll: true });
+  window.requestAnimationFrame(focusLightbox);
 }
 
 function closeLightbox() {
   if (!lightbox || !bodyEl) return;
   lightbox.classList.remove('artifact-preview-lightbox--open');
+  lightbox.setAttribute('inert', '');
+  lightbox.setAttribute('aria-hidden', 'true');
+  setLightboxBackgroundInert(false);
   document.documentElement.classList.remove('artifact-preview-lightbox-open');
+  previouslyFocused?.focus({ preventScroll: true });
+  previouslyFocused = null;
   window.setTimeout(() => {
-    if (!lightbox?.classList.contains('artifact-preview-lightbox--open') && bodyEl) bodyEl.innerHTML = '';
-  }, 180);
+    if (!lightbox?.classList.contains('artifact-preview-lightbox--open') && bodyEl) {
+      bodyEl.innerHTML = '';
+    }
+  }, 420);
 }
 
 function shouldIgnoreBubbleOpen(target: Element) {
@@ -194,12 +256,35 @@ function previewCardFromTarget(target: Element) {
   return card;
 }
 
+function handleOpenArtifactEvent(event: Event) {
+  const detail = (event as CustomEvent<{ artifactId?: unknown; origin?: unknown }>).detail;
+  if (!detail || typeof detail.artifactId !== 'string' || !stateRef) return;
+  const artifact = getArtifacts(stateRef).find((candidate) => candidate.id === detail.artifactId);
+  if (!artifact || artifact.kind === 'component') return;
+  openArtifactPreview(artifact, detail.origin instanceof Element ? detail.origin : null);
+}
+
+function requestArtifactOpen(artifact: ArtifactLike, origin?: Element | null) {
+  if (!artifact.id) {
+    openArtifactPreview(artifact, origin);
+    return;
+  }
+
+  document.dispatchEvent(
+    new CustomEvent('dot:open-artifact', {
+      detail: { artifactId: artifact.id, origin: origin ?? undefined },
+    }),
+  );
+}
+
 export function installArtifactPreviewLightbox(rootInstance: unknown) {
   stateRef = getSetupState(rootInstance);
   if (!stateRef) {
     console.warn('[dot:preview] setup state unavailable; preview lightbox disabled');
     return;
   }
+  document.addEventListener('dot:open-artifact', handleOpenArtifactEvent);
+  document.addEventListener('focusin', handleLightboxFocusIn);
 
   document.addEventListener(
     'pointerdown',
@@ -215,6 +300,7 @@ export function installArtifactPreviewLightbox(rootInstance: unknown) {
         startX: event.clientX,
         startY: event.clientY,
         moved: false,
+        wasSelected: card.classList.contains('artifact-card--selected') && card.dataset.openSuppressed !== 'true',
       };
     },
     true,
@@ -244,7 +330,12 @@ export function installArtifactPreviewLightbox(rootInstance: unknown) {
       if (!card || card !== state.card) return;
 
       const artifact = getArtifactForCard(card);
-      if (artifact) openArtifactPreview(artifact);
+      // Components unfold in two organic steps: bubble, then habitat. A first
+      // tap opens the bubble; a second membrane tap (or the bloom seed) enters
+      // the spacious live surface.
+      if (artifact?.kind === 'component' && !state.wasSelected) return;
+      if (artifact?.kind === 'component') requestArtifactOpen(artifact, card);
+      else if (artifact) openArtifactPreview(artifact, card);
     },
     true,
   );

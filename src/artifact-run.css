@@ -1,0 +1,209 @@
+html.artifact-run-open,
+html.artifact-run-open body {
+  overflow: hidden;
+}
+
+html.artifact-run-open body > .dot-control-center {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.artifact-card--selected.artifact-card--kind-component:not(.artifact-card--running) {
+  width: min(560px, calc(100vw - 52px)) !important;
+  min-height: 340px !important;
+  padding: 48px 44px 44px !important;
+}
+
+.artifact-card--selected.artifact-card--kind-component:not(.artifact-card--running) .artifact-content--component {
+  min-height: clamp(230px, var(--dot-component-content-height, 320px), 430px);
+}
+
+.artifact-card--selected.artifact-card--kind-component:not(.artifact-card--running) .component-frame {
+  width: 100%;
+  height: clamp(230px, var(--dot-component-content-height, 320px), 430px);
+  min-height: 230px;
+  max-height: 430px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.workspace--artifact-running {
+  cursor: default;
+}
+
+.workspace--artifact-running > .world {
+  z-index: 120;
+}
+
+.workspace--artifact-running .world > :not(.artifact-card--running) {
+  opacity: 0.12;
+  pointer-events: none;
+  filter: saturate(0.42) blur(0.7px);
+  transition:
+    opacity 420ms ease,
+    filter 420ms ease;
+}
+
+.artifact-card--running {
+  left: var(--artifact-run-left) !important;
+  top: var(--artifact-run-top) !important;
+  z-index: 600 !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: var(--artifact-run-width) !important;
+  height: var(--artifact-run-height) !important;
+  min-height: var(--artifact-run-height) !important;
+  max-height: var(--artifact-run-height) !important;
+  overflow: hidden !important;
+  padding: clamp(18px, 2.2vw, 34px) !important;
+  border-color: rgba(var(--c-life), 0.22) !important;
+  border-radius: clamp(36px, 5vw, 78px) clamp(44px, 6vw, 94px) clamp(38px, 5vw, 72px)
+    clamp(46px, 5vw, 86px) / clamp(42px, 5vw, 82px) clamp(36px, 5vw, 70px)
+    clamp(48px, 6vw, 96px) clamp(38px, 5vw, 74px) !important;
+  background:
+    radial-gradient(circle at 12% 7%, rgba(255, 255, 255, 0.12), transparent 19%),
+    radial-gradient(circle at 87% 84%, rgba(var(--c-life), 0.12), transparent 34%),
+    linear-gradient(148deg, rgba(var(--c-deep), 0.95), rgba(1, 5, 5, 0.98)) !important;
+  box-shadow:
+    0 0 0 100vmax rgba(2, 5, 7, 0.68),
+    0 42px 140px rgba(0, 0, 0, 0.64),
+    0 0 110px rgba(var(--c-life), 0.13),
+    inset 0 1px rgba(255, 255, 255, 0.1) !important;
+  cursor: default !important;
+  transform: scale(var(--artifact-run-inverse-zoom)) !important;
+  transform-origin: 0 0 !important;
+  transition:
+    left 540ms cubic-bezier(0.16, 1, 0.3, 1),
+    top 540ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 540ms cubic-bezier(0.16, 1, 0.3, 1),
+    height 540ms cubic-bezier(0.16, 1, 0.3, 1),
+    min-height 540ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 640ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 540ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.artifact-card--running::before {
+  opacity: 1 !important;
+}
+
+.artifact-card--running > .artifact-card__eyebrow {
+  display: none;
+}
+
+.artifact-card--running > .nested-bubbles,
+.artifact-card--running > .nested-drop-hint {
+  display: none;
+}
+
+.artifact-card--running > h2 {
+  z-index: 4;
+  max-width: calc(100% - 68px);
+  margin: 0 0 clamp(10px, 1.4vw, 18px) !important;
+  padding-left: clamp(4px, 0.7vw, 10px);
+  color: rgba(var(--c-ink), 0.94);
+  font-size: clamp(1.08rem, 1.8vw, 1.5rem) !important;
+  line-height: 1.08;
+}
+
+.artifact-card--running > .artifact-content--component {
+  z-index: 3;
+  display: block;
+  min-width: 0;
+  min-height: 0 !important;
+  height: 100%;
+  padding: 0 !important;
+}
+
+.artifact-card--running .component-frame {
+  width: 100%;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto;
+  border-color: rgba(255, 255, 255, 0.09);
+  border-radius: clamp(24px, 3vw, 50px) clamp(30px, 3.6vw, 60px) clamp(26px, 3vw, 46px)
+    clamp(34px, 4vw, 66px) / clamp(30px, 3.8vw, 60px) clamp(24px, 3vw, 48px)
+    clamp(38px, 4vw, 66px) clamp(26px, 3.4vw, 54px);
+  background:
+    radial-gradient(circle at 24% 14%, rgba(var(--c-life), 0.08), transparent 34%),
+    rgba(4, 9, 8, 0.46);
+  box-shadow:
+    0 24px 74px rgba(0, 0, 0, 0.34),
+    inset 0 1px rgba(255, 255, 255, 0.06);
+  pointer-events: auto !important;
+}
+
+.artifact-run-close {
+  position: absolute;
+  top: clamp(16px, 2vw, 26px);
+  right: clamp(16px, 2vw, 26px);
+  z-index: 12;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 0;
+  color: rgba(var(--c-ink), 0.88);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.14), transparent 28%),
+    rgba(var(--c-deep), 0.74);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.34),
+    inset 0 1px rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 1.3rem;
+  backdrop-filter: blur(14px);
+}
+
+.artifact-run-close:hover,
+.artifact-run-close:focus-visible {
+  border-color: rgba(var(--c-warm), 0.42);
+  outline: none;
+  background: rgba(var(--c-warm), 0.12);
+}
+
+@media (max-width: 760px) {
+  .artifact-card--selected.artifact-card--kind-component:not(.artifact-card--running) {
+    width: min(390px, calc(100vw - 28px)) !important;
+    min-height: 300px !important;
+    padding: 34px 28px 38px !important;
+  }
+
+  .artifact-card--selected.artifact-card--kind-component:not(.artifact-card--running) .artifact-content--component,
+  .artifact-card--selected.artifact-card--kind-component:not(.artifact-card--running) .component-frame {
+    height: clamp(220px, var(--dot-component-content-height, 280px), 46vh);
+    min-height: 220px;
+    max-height: 46vh;
+  }
+
+  .artifact-card--running {
+    padding: 12px !important;
+    border-radius: 30px 36px 28px 34px / 34px 28px 38px 30px !important;
+  }
+
+  .artifact-card--running > h2 {
+    margin: 5px 0 10px 8px !important;
+    font-size: 1rem !important;
+  }
+
+  .artifact-card--running .component-frame {
+    border-radius: 22px 28px 20px 32px / 26px 20px 32px 22px;
+  }
+
+  .artifact-run-close {
+    top: 12px;
+    right: 12px;
+    width: 38px;
+    height: 38px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artifact-card--running,
+  .workspace--artifact-running .world > :not(.artifact-card--running) {
+    transition: none;
+  }
+}

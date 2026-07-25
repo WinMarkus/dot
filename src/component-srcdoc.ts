@@ -62,6 +62,11 @@ export type DotComponentFrameMessage =
     }
   | {
       protocol: typeof DOT_COMPONENT_BRIDGE_PROTOCOL;
+      type: 'dot:close-request';
+      version: typeof DOT_COMPONENT_BRIDGE_VERSION;
+    }
+  | {
+      protocol: typeof DOT_COMPONENT_BRIDGE_PROTOCOL;
       type: 'dot:error';
       version: typeof DOT_COMPONENT_BRIDGE_VERSION;
       message: string;
@@ -78,6 +83,70 @@ function escapeClosingTags(value: string) {
 function toJsLiteral(value: string) {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
+
+// A low-specificity safety net for model-generated components. Generated
+// styles are appended after this sheet and ordinary selectors beat :where(),
+// so a deliberate component design always remains in control.
+const COMPONENT_BASE_CSS = `
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-rounded, "SF Pro Rounded", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --dot-frame-ink: #f7f3e8;
+      --dot-frame-muted: rgba(247, 243, 232, .64);
+      --dot-frame-surface: rgba(247, 243, 232, .08);
+      --dot-frame-line: rgba(247, 243, 232, .16);
+      --dot-frame-focus: #baf2a8;
+    }
+    html, body { width: 100%; min-height: 100%; margin: 0; background: transparent; }
+    body {
+      overflow-x: hidden;
+      color: var(--dot-frame-ink);
+      line-height: 1.4;
+      scrollbar-color: rgba(247, 243, 232, .38) transparent;
+    }
+    #app { width: 100%; min-height: 100vh; }
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(button, input, select, textarea) {
+      max-width: 100%;
+      margin: 0;
+      color: inherit;
+      font: inherit;
+      letter-spacing: inherit;
+    }
+    :where(button) {
+      min-height: 38px;
+      padding: .58em .9em;
+      border: 1px solid var(--dot-frame-line);
+      border-radius: 999px;
+      background: var(--dot-frame-surface);
+    }
+    :where(button:not(:disabled), input[type="range"], select) { cursor: pointer; }
+    :where(input:not([type="range"]), select, textarea) {
+      min-height: 40px;
+      padding: .62em .76em;
+      border: 1px solid var(--dot-frame-line);
+      border-radius: 12px;
+      background: rgba(8, 11, 8, .62);
+    }
+    :where(textarea) { resize: vertical; }
+    :where(button, input, select, textarea):focus-visible {
+      outline: 2px solid var(--dot-frame-focus);
+      outline-offset: 3px;
+    }
+    :where(button, input, select, textarea):disabled { cursor: not-allowed; opacity: .48; }
+    :where(img, svg, canvas, video) { max-width: 100%; }
+    ::selection { color: #10140f; background: #c9f7b9; }
+    ::-webkit-scrollbar { width: 11px; height: 11px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      border: 3px solid transparent;
+      border-radius: 999px;
+      background: rgba(247, 243, 232, .38);
+      background-clip: padding-box;
+    }
+  `;
 
 // This code is deliberately self-contained: it runs inside a sandboxed srcdoc,
 // where imports and network access are disabled by CSP. Runtime data is accepted
@@ -286,6 +355,12 @@ const DOT_RUNTIME_BOOTSTRAP = `(function installDotRuntime() {
       });
       window.addEventListener('error', (event) => reportError(event.error || event.message, 'runtime'));
       window.addEventListener('unhandledrejection', (event) => reportError(event.reason, 'promise'));
+      window.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        queueMicrotask(() => {
+          if (!event.defaultPrevented) send(packet('dot:close-request'));
+        });
+      });
 
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observeSize, { once: true });
       else observeSize();
@@ -313,8 +388,7 @@ function createLegacySrcDoc(content: ArtifactContent) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; media-src data: blob:;" />
   <style>
-    html, body { width: 100%; min-height: 100%; margin: 0; background: transparent; }
-    * { box-sizing: border-box; }
+    ${COMPONENT_BASE_CSS}
     ${escapeClosingTags(css)}
   </style>
   <script>
@@ -349,8 +423,7 @@ function createVueSrcDoc(sfcSource: string) {
   <!-- 'unsafe-eval' is required by Vue's runtime template compiler; the sandbox plus connect-src 'none' remains the security boundary. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval' ${origin}; img-src data: blob:; font-src data:; connect-src 'none'; media-src data: blob:;" />
   <style>
-    html, body { width: 100%; min-height: 100%; margin: 0; background: transparent; }
-    * { box-sizing: border-box; }
+    ${COMPONENT_BASE_CSS}
   </style>
   <script src="${vueSrc}"><\/script>
   <script>

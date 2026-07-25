@@ -57,6 +57,7 @@ function screenToWorld(point: Point, camera: CameraState): Point {
 }
 
 function shouldIgnoreTouchStart(event: TouchEvent) {
+  if (document.documentElement.classList.contains('artifact-run-open')) return true;
   const target = event.target;
   if (!(target instanceof HTMLElement)) return true;
 
@@ -112,6 +113,10 @@ export function installMobileCanvasGestures(rootInstance: unknown) {
 
   function moveGesture(event: TouchEvent) {
     if (!gesture) return;
+    if (document.documentElement.classList.contains('artifact-run-open')) {
+      endGesture();
+      return;
+    }
 
     if (event.touches.length < 2) {
       endGesture();

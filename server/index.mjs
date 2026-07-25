@@ -142,7 +142,7 @@ Hard rules:
    - the script must use "export default { ... }" (Options API or a setup() function) — never <script setup>
    - Vue is available as the global "Vue"; destructure what you need, e.g. const { ref, computed } = Vue
    - no import statements, no external scripts or stylesheets, no network calls
-   - make it feel alive: real interactivity and tasteful self-contained styling
+   - make it feel alive: real interactivity, a strong visual point of view, and tasteful self-contained styling
    - design ports and implementation together; every component must expose at least one useful input and one useful output
    - every declared input id must be read from the reactive global Dot.inputs using that exact id; use computed/watch so later connected values update the rendered component instead of taking a one-time snapshot
    - every declared output id must be sent through Dot.emit(outputPortId, value) using that exact id when the relevant state changes or interaction occurs; emitted values must be JSON-serializable
@@ -155,6 +155,17 @@ Hard rules:
      // read dotInputs.mood reactively; call emitDot("selection", value)
    - connected inputs enhance or steer the experience but must not be required for basic standalone interaction
    - do not declare a port unless content.vue actually reads or emits it; labels and purposes must describe the concrete value rather than implementation jargon
+
+   Graphical experience contract for every component:
+   - Dot is an organic spatial canvas, not an admin dashboard. Build one coherent living instrument or miniature world, not a title followed by a generic form and a text report.
+   - Begin by identifying the prompt's central nouns, forces, and transformations. Give them a visible embodiment using responsive HTML/CSS, inline SVG, or Canvas: creatures inhabit a habitat, planets orbit, ingredients gather in a vessel, sound becomes a waveform, time becomes a path. Do not reuse these examples mechanically.
+   - Make the primary action direct and contextual. Let people touch, drag, place, scrub, rotate, grow, sort, or activate the represented thing itself. Conventional buttons are secondary actions, not the entire experience.
+   - Express changing state graphically through position, scale, shape, density, color, light, motion, spatial relationships, or the appearance/disappearance of objects. A concise value label may support the visual; a heading named "Simulation Output" followed by paragraphs does not count as an experience.
+   - Do not use <select>, a stack of labeled fields, a table, or a list as the primary interface. If a small set of choices is genuinely necessary, embody it as illustrated objects, segmented tokens, a dial, a spatial picker, or another context-specific control. Text areas and lists are acceptable only when writing or list editing is intrinsically the requested activity.
+   - Avoid cards nested inside cards, oversized headings, and explanatory copy that competes with the experience. Reveal instruction in one short, quiet line or through obvious affordances.
+   - Design fluidly for both a compact bubble and an expansive run view. The scene must remain usable from roughly 320x260 upward, fill the available surface, wrap or simplify responsively, and avoid normal-use internal scrolling. Never assume one fixed pixel viewport.
+   - Use restrained, meaningful motion and include a prefers-reduced-motion fallback. Provide accessible names, keyboard activation, visible focus, sufficient contrast, and semantic controls even when they look unconventional.
+   - The result should be immediately enjoyable before any connection exists. Connected Dot inputs should visibly influence the world; interactions should visibly change it and emit outputs.
 8. Give every non-component artifact useful ports too: its primary result should be an output (text, data, image, or video), and inputs should name concrete influences such as sourceText, palette, script, or records. These ports describe generative flow and do not use the Dot runtime.
 9. Only create children when the user clearly asks for a structure or hierarchy.
 10. Prefer obeying the user's obvious intent over being clever.
@@ -173,7 +184,7 @@ function safeArray(value) {
 function inferPreferredKind(prompt, fallback = 'object') {
   const text = safeString(prompt).toLowerCase();
 
-  if (/\b(component|html|css|javascript|js|vue|react|button|form|counter|widget|calculator|input|modal)\b/.test(text)) {
+  if (/\b(component|html|css|javascript|js|vue|react|button|form|counter|widget|calculator|input|modal|simulate|simulation|simulator)\b/.test(text)) {
     return 'component';
   }
 
@@ -532,7 +543,9 @@ function buildOpenRouterRequestBody(model, body, responseFormat) {
     // in plain mode we rely on the prompt plus extractJsonObject instead.
     ...(responseFormat ? { response_format: responseFormat } : {}),
     temperature: 0.3,
-    max_tokens: 3200,
+    // A polished graphical SFC needs enough room for its scene, behavior, and
+    // responsive styling while still remaining a single self-contained artifact.
+    max_tokens: 5200,
   };
 }
 
